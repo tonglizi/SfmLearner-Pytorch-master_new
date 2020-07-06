@@ -21,7 +21,7 @@ def upconv(in_planes, out_planes):
 class PoseExpNet2(nn.Module):
 
     def __init__(self, nb_ref_imgs=2, output_exp=False):
-        super(PoseExpNet, self).__init__()
+        super(PoseExpNet2, self).__init__()
         self.nb_ref_imgs = nb_ref_imgs
         self.output_exp = output_exp
 
