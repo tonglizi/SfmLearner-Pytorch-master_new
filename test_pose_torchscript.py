@@ -41,7 +41,7 @@ def main():
     seq_length = int(weights['state_dict']['conv1.0.weight'].size(1)/3)
     print(seq_length)
     print('**********************************')
-    traced_script_module = PoseExpNetScript(nb_ref_imgs=seq_length - 1, output_exp=False).to(device)
+    traced_script_module = PoseExpNetScript(nb_ref_imgs=seq_length - 1).to(device)
     traced_script_module.load_state_dict(weights['state_dict'], strict=False)
     traced_script_module.eval()
     traced_script_module.save("./" + args.pretrained_posenet + "_toScript.pt")
