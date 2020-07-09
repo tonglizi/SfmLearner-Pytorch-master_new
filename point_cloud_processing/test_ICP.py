@@ -24,8 +24,8 @@ def rotation_matrix(axis, theta):
 
 
 def test_best_fit():
-    from prepare_data import loadDataUsePCL
-    pointClouds = loadDataUsePCL(rootdir)
+    from prepare_data import loadPointCloud
+    pointClouds = loadPointCloud(rootdir)
 
     for j in range(10):
     #for j in (range(len(pointClouds)-1)):
@@ -57,8 +57,8 @@ def test_best_fit():
 
 
 def test_icp():
-    from prepare_data import loadDataUsePCL
-    pointclouds = loadDataUsePCL(rootdir)
+    from prepare_data import loadPointCloud
+    pointclouds = loadPointCloud(rootdir)
 
     #for j in range(len(pointclouds) - 1):
     for j in range(10):

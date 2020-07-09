@@ -10,16 +10,23 @@ import pcl
 # from pypcd import pypcd
 
 
-def loadDataUsePCL(rootdir):
-    path=rootdir
-    files=os.listdir(path)
-    print(files)
+def loadPointCloud(rootdir):
+    files=os.listdir(rootdir)
     pointclouds=[]
     for file in files:
         if not os.path.isdir(file):
             p=pcl.load(rootdir+"\\"+file)
             pointclouds.append(p)
     return pointclouds
+
+def loadImage(rootdir):
+    files=os.listdir(rootdir)
+    images=[]
+    for file in files:
+        if not os.path.isdir(file):
+            img=pcl.load(rootdir+"\\"+file)
+            images.append(img)
+    return images
 
 # path=r'C:\Users\93121\Desktop\velodyne_pcd\0000000000.pcd'
 # p=pcl.load(path)
