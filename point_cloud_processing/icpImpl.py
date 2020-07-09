@@ -13,7 +13,9 @@ def best_fit_transform(A, B):
       R: mxm rotation matrix
       t: mx1 translation vector
     '''
-
+    dim=min(A.shape[0],B.shape[0])
+    A=A[:dim]
+    B=B[:dim]
     assert A.shape == B.shape
 
     # get number of dimensions
@@ -79,7 +81,9 @@ def icp(A, B, init_pose=None, max_iterations=20, tolerance=0.001):
         distances: Euclidean distances (errors) of the nearest neighbor
         i: number of iterations to converge
     '''
-
+    dim=min(A.shape[0],B.shape[0])
+    A=A[:dim]
+    B=B[:dim]
     assert A.shape == B.shape
 
     # get number of dimensions

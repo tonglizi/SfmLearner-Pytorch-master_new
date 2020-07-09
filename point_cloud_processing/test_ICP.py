@@ -1,45 +1,44 @@
 import numpy as np
 import time
 import icpImpl
-import pcl
+# import pcl
 
 # Constants
-N = 10                                    # number of random points in the dataset
-iterations = 100                             # number of test iterations
-dim = 3                                     # number of dimensions of the points
-noise_sigma = .01                           # standard deviation error to be added
-translation = .1                            # max translation of the test set
-rotation = .1                               # max rotation (radians) of the test set
-rootdir='/'
+N = 10  # number of random points in the dataset
+iterations = 100  # number of test iterations
+dim = 3  # number of dimensions of the points
+noise_sigma = .01  # standard deviation error to be added
+translation = .1  # max translation of the test set
+rotation = .1  # max rotation (radians) of the test set
+rootdir = 'C:\\Users\\93121\\Desktop\\velodyne_pcd\\'
 
 
 def rotation_matrix(axis, theta):
-    axis = axis/np.sqrt(np.dot(axis, axis))
-    a = np.cos(theta/2.)
-    b, c, d = -axis*np.sin(theta/2.)
+    axis = axis / np.sqrt(np.dot(axis, axis))
+    a = np.cos(theta / 2.)
+    b, c, d = -axis * np.sin(theta / 2.)
 
-    return np.array([[a*a+b*b-c*c-d*d, 2*(b*c-a*d), 2*(b*d+a*c)],
-                  [2*(b*c+a*d), a*a+c*c-b*b-d*d, 2*(c*d-a*b)],
-                  [2*(b*d-a*c), 2*(c*d+a*b), a*a+d*d-b*b-c*c]])
+    return np.array([[a * a + b * b - c * c - d * d, 2 * (b * c - a * d), 2 * (b * d + a * c)],
+                     [2 * (b * c + a * d), a * a + c * c - b * b - d * d, 2 * (c * d - a * b)],
+                     [2 * (b * d - a * c), 2 * (c * d + a * b), a * a + d * d - b * b - c * c]])
 
 
 def test_best_fit():
-    
-    from prepare_data import loadData
-    pointClouds=loadData(rootdir)
-    for j in (len(pointClouds)-1):
-        A=np.asarray(pointClouds[j])
-        B=np.asarray(pointClouds[j+1])
+    from prepare_data import loadDataUsePCL
+    pointClouds = loadDataUsePCL(rootdir)
 
+    for j in range(10):
+    #for j in (range(len(pointClouds)-1)):
+        A = np.asarray(pointClouds[j])
+        B = np.asarray(pointClouds[j + 1])
         total_time = 0
-    
+
         for i in range(iterations):
-        
             # Find best fit transform
             start = time.time()
             T, R1, t1 = icpImpl.best_fit_transform(B, A)
             total_time += time.time() - start
-    
+
             # # Make C a homogeneous representation of B
             # C = np.ones((N, 4))
             # C[:,0:3] = B
@@ -50,22 +49,21 @@ def test_best_fit():
             # assert np.allclose(C[:,0:3], A, atol=6*noise_sigma) # T should transform B (or C) to A
             # assert np.allclose(-t1, t, atol=6*noise_sigma)      # t and t1 should be inverses
             # assert np.allclose(R1.T, R, atol=6*noise_sigma)     # R and R1 should be inverses
-            print(T)
+    #print(T)
 
-    print('best fit time: {:.3}'.format(total_time/iterations))
+        print('best fit time: {:.3}'.format(total_time / iterations))
 
     return
 
 
 def test_icp():
-    
-    from prepare_data import loadData
-    pointclouds=loadData(rootdir)
-    
-    for j in range(len(pointclouds)-1):
-        A=np.asarray(pointclouds[j])
-        B=np.asarray(pointclouds[j+1])
-    
+    from prepare_data import loadDataUsePCL
+    pointclouds = loadDataUsePCL(rootdir)
+
+    #for j in range(len(pointclouds) - 1):
+    for j in range(10):
+        A = np.asarray(pointclouds[j])
+        B = np.asarray(pointclouds[j + 1])
 
         total_time = 0
 
@@ -86,12 +84,12 @@ def test_icp():
             #
             # # Shuffle to disrupt correspondence
             # np.random.shuffle(B)
-    
+
             # Run ICP
             start = time.time()
-            T, distances, iterations =icpImpl.icp(B, A, tolerance=0.000001)
+            T, distances, iteration = icpImpl.icp(B, A, tolerance=0.000001)
             total_time += time.time() - start
-    
+
             # # Make C a homogeneous representation of B
             # C = np.ones((N, 4))
             # C[:,0:3] = np.copy(B)
@@ -102,9 +100,9 @@ def test_icp():
             # assert np.mean(distances) < 6*noise_sigma                   # mean error should be small
             # assert np.allclose(T[0:3,0:3].T, R, atol=6*noise_sigma)     # T and R should be inverses
             # assert np.allclose(-T[0:3,3], t, atol=6*noise_sigma)        # T and t should be inverses
-            print(T)
+    #print(T)
 
-    print('icp time: {:.3}'.format(total_time/iterations))
+        print('icp time: {:.3}'.format(total_time / iteration))
 
     return
 
