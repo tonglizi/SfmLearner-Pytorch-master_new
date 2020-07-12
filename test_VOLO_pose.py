@@ -35,7 +35,7 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 @torch.no_grad()
 def main():
     args = parser.parse_args()
-    from kitti_eval.pose_evaluation_utils import test_framework_KITTI as test_framework
+    from kitti_eval.VOLO_data_utils import test_framework_KITTI as test_framework
 
     weights = torch.load(args.pretrained_posenet)
     seq_length = int(weights['state_dict']['conv1.0.weight'].size(1)/3)
@@ -53,6 +53,8 @@ def main():
         predictions_array = np.zeros((len(framework), seq_length, 3, 4))
 
     for j, sample in enumerate(tqdm(framework)):
+
+        #先进行VO预估
         imgs = sample['imgs']
 
         h,w,_ = imgs[0].shape
@@ -71,7 +73,7 @@ def main():
                 ref_imgs.append(img)
 
         _, poses = pose_net(tgt_img, ref_imgs)
-        print("&&&&&&&&&&&&&11")
+
         poses = poses.cpu()[0]
         poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
 
@@ -81,18 +83,38 @@ def main():
         tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
 
         transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
+        print('**********DeepVO result*************')
         print(transform_matrices)
-        print("&&&&&&&&&&&&&")
 
-        first_inv_transform = inv_transform_matrices[0]
-        final_poses = first_inv_transform[:,:3] @ transform_matrices
-        final_poses[:,:,-1:] += first_inv_transform[:,-1:]
+        #加入LO优化
+        pointclouds=sample['pointclouds']
+        from VOLO import LO
+        #pointcluds是可以直接处理的
+        for i, pc in enumerate(pointclouds):
+            if i == len(pointclouds)//2:
+                tgt_pc =pointclouds[i]
 
-        if args.output_dir is not None:
-            predictions_array[j] = final_poses
+        optimized_transform_matrices=[]
+        for i,pc in enumerate(pointclouds):
+            T,_,_=LO(pc,tgt_pc,50,T=None)
+            optimized_transform_matrices.append(T)
 
-        ATE, RE = compute_pose_error(sample['poses'], final_poses)
-        errors[j] = ATE, RE
+        print('**********LO result*************')
+        print(optimized_transform_matrices)
+
+
+
+
+
+        # first_inv_transform = inv_transform_matrices[0]
+        # final_poses = first_inv_transform[:,:3] @ transform_matrices
+        # final_poses[:,:,-1:] += first_inv_transform[:,-1:]
+        #
+        # if args.output_dir is not None:
+        #     predictions_array[j] = final_poses
+        #
+        # ATE, RE = compute_pose_error(sample['poses'], final_poses)
+        # errors[j] = ATE, RE
 
     mean_errors = errors.mean(0)
     std_errors = errors.std(0)

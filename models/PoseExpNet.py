@@ -60,6 +60,7 @@ class PoseExpNet(nn.Module):
         assert(len(ref_imgs) == self.nb_ref_imgs)
         input = [target_image]
         input.extend(ref_imgs)
+        input = torch.cat(input, 1)
         out_conv1 = self.conv1(input)
         out_conv2 = self.conv2(out_conv1)
         out_conv3 = self.conv3(out_conv2)

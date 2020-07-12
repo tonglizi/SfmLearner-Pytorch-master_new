@@ -10,7 +10,7 @@ dim = 3  # number of dimensions of the points
 noise_sigma = .01  # standard deviation error to be added
 translation = .1  # max translation of the test set
 rotation = .1  # max rotation (radians) of the test set
-rootdir = 'C:\\Users\\93121\\Desktop\\velodyne_pcd\\'
+rootdir = 'C:\\Users\\93121\\Desktop\\dataset\\velodyne_pcd\\'
 
 
 def rotation_matrix(axis, theta):
@@ -24,13 +24,18 @@ def rotation_matrix(axis, theta):
 
 
 def test_best_fit():
-    from prepare_data import loadPointCloud
-    pointClouds = loadPointCloud(rootdir)
+
+
+    # from prepare_data import loadPointCloud
+    # pointClouds = loadPointCloud(rootdir)
+
+    from prepare_data import loadPointCloudOpen3D
+    pointClouds=loadPointCloudOpen3D(rootdir)
 
     for j in range(10):
     #for j in (range(len(pointClouds)-1)):
-        A = np.asarray(pointClouds[j])
-        B = np.asarray(pointClouds[j + 1])
+        A = np.asarray(pointClouds[j].points)
+        B = np.asarray(pointClouds[j + 1].points)
         total_time = 0
 
         for i in range(iterations):
