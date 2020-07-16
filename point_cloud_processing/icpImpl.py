@@ -1,6 +1,7 @@
 import numpy as np
 from sklearn.neighbors import NearestNeighbors
 
+#A,B要求是ndarray格式的
 
 def best_fit_transform(A, B):
     '''

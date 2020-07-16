@@ -96,13 +96,15 @@ def main():
 
         optimized_transform_matrices=[]
         for i,pc in enumerate(pointclouds):
-            T,_,_=LO(pc,tgt_pc,50,T=None)
+            T,_,_=LO(pc,tgt_pc,50,T=None,LO='icp')
             optimized_transform_matrices.append(T)
 
         print('**********LO result*************')
         print(optimized_transform_matrices)
 
 
+        #TODO 打通VO-LO pipeline: 需要将转换矩阵格式对齐； 评估VO的预估对LO的增益：效率上和精度上； 评估过程可视化
+        #TODO 利用数据集有对应的图像，点云和位姿真值的数据集（Kitti的odomerty）
 
 
 

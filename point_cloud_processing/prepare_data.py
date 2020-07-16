@@ -44,7 +44,7 @@ def loadPointCloudOpen3D(rootdir):
     return pointclouds
 
 #*********test code***************
-path=r'C:\Users\93121\Desktop\dataset\velodyne_pcd\0000000000.pcd'
+# path=r'C:\Users\93121\Desktop\dataset\velodyne_pcd\0000000000.pcd'
 
 #test open3D read and convert to ndarray
 # p=read_pcd(path)
