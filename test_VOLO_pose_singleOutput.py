@@ -1,3 +1,8 @@
+# -*- coding: utf-8 -*- 
+# @Time : 2020/7/24 0:01 
+# @Author : CaiXin
+# @File : test_VOLO_pose_singleOutput.py
+
 import os
 import time
 
@@ -37,7 +42,9 @@ device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cp
 def main():
     global tgt_pc, tgt_img
     args = parser.parse_args()
-    from kitti_eval.VOLO_data_utils import test_framework_KITTI as test_framework
+    # from kitti_eval.VOLO_data_utils import test_framework_KITTI as test_framework
+    from kitti_eval.pose_evaluation_utils import test_framework_KITTI as test_framework
+
 
     weights = torch.load(args.pretrained_posenet)
     seq_length = int(weights['state_dict']['conv1.0.weight'].size(1)/3)
@@ -54,8 +61,10 @@ def main():
         output_dir = Path(args.output_dir)
         output_dir.makedirs_p()
         predictions_array = np.zeros((len(framework), seq_length, 3, 4))
+        abs_VO_poses=np.zeros((len(framework),12))
 
-    f=open('//')
+
+    abs_VO_pose=np.identity(4)[:3,:]
     for j, sample in enumerate(tqdm(framework)):
 
         '''
@@ -95,6 +104,7 @@ def main():
         transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
         print('**********DeepVO result: time_cost {:.3} s'.format(timeCostVO/(len(imgs)-1)))
         #print(transform_matrices)
+        #将对[0 1 2]中间1的转换矩阵变成对0的位姿转换
         first_inv_transform = inv_transform_matrices[0]
         final_poses = first_inv_transform[:,:3] @ transform_matrices
         final_poses[:,:,-1:] += first_inv_transform[:,-1:]
@@ -103,72 +113,83 @@ def main():
         print('poses')
         print(final_poses)
 
+        cur_VO_pose=final_poses[1]
+        abs_VO_pose[:,:3]=cur_VO_pose[:,:3]@abs_VO_pose[:,:3]
+        abs_VO_pose[:,-1:]+=cur_VO_pose[:,-1:]
+
+        print('绝对位姿')
+        print(abs_VO_pose)
+
+
+
         if args.output_dir is not None:
             predictions_array[j] = final_poses
+            abs_VO_poses[j]=abs_VO_pose.reshape(-1,12)[0]
+
 
         ATE, RE = compute_pose_error(sample['poses'], final_poses)
         errors[j] = ATE, RE
 
 
-
-        '''
-        LO部分
-        以VO的结果作为预估，并计算和真值的差值
-        '''
-        pointclouds=sample['pointclouds']
-        from VOLO import LO
-        #pointcluds是可以直接处理的
-        for i, pc in enumerate(pointclouds):
-            if i == len(pointclouds)//2:
-
-                tgt_pc =pointclouds[i]
-
-        optimized_transform_matrices=[]
-
-        timeCostLO=0
-        startTimeLO=time.time()
-        totalIterations=0
-        for i,pc in enumerate(pointclouds):
-            pose_proposal=np.identity(4)
-            pose_proposal[:3,:]=transform_matrices[i]
-            print('======pose proposal for LO=====')
-            print(pose_proposal)
-
-            T,distacnces,iterations=LO(pc,tgt_pc,init_pose=pose_proposal, max_iterations=50, tolerance=0.001,LO='icp')
-            optimized_transform_matrices.append(T)
-            totalIterations+=iterations
-            print('iterations:\n')
-            print(iterations)
-        timeCostLO=time.time()-startTimeLO
-        optimized_transform_matrices=np.asarray(optimized_transform_matrices)
-
-        print('*****LO result: time_cost {:.3} s'.format(timeCostLO/(len(pointclouds)-1))+' average iterations: {}'
-              .format(totalIterations/(len(pointclouds)-1)))
-        # print(optimized_transform_matrices)
-
-
-        #TODO 打通VO-LO pipeline: 需要将转换矩阵格式对齐； 评估VO的预估对LO的增益：效率上和精度上； 评估过程可视化
-        #TODO 利用数据集有对应的图像，点云和位姿真值的数据集（Kitti的odomerty）
-
-        inv_optimized_rot_matrices = np.linalg.inv(optimized_transform_matrices[:,:3,:3])
-        inv_optimized_tr_vectors = -inv_optimized_rot_matrices @ optimized_transform_matrices[:,:3,-1:]
-        inv_optimized_transform_matrices = np.concatenate([inv_optimized_rot_matrices, inv_optimized_tr_vectors], axis=-1)
-
-        first_inv_optimized_transform = inv_optimized_transform_matrices[0]
-        final_optimized_poses = first_inv_optimized_transform[:,:3] @ optimized_transform_matrices[:,:3,:]
-        final_optimized_poses[:,:,-1:] += first_inv_optimized_transform[:,-1:]
-        # print('first')
-        # print(first_inv_optimized_transform)
-        print('poses')
-        print(final_optimized_poses)
-
-        if args.output_dir is not None:
-            predictions_array[j] = final_poses
-
-        optimized_ATE, optimized_RE = compute_pose_error(sample['poses'], final_optimized_poses)
-        optimized_errors[j] = optimized_ATE, optimized_RE
-
-        print('==============\n===============\n')
+        #
+        # '''
+        # LO部分
+        # 以VO的结果作为预估，并计算和真值的差值
+        # '''
+        # pointclouds=sample['pointclouds']
+        # from VOLO import LO
+        # #pointcluds是可以直接处理的
+        # for i, pc in enumerate(pointclouds):
+        #     if i == len(pointclouds)//2:
+        #
+        #         tgt_pc =pointclouds[i]
+        #
+        # optimized_transform_matrices=[]
+        #
+        # timeCostLO=0
+        # startTimeLO=time.time()
+        # totalIterations=0
+        # for i,pc in enumerate(pointclouds):
+        #     pose_proposal=np.identity(4)
+        #     pose_proposal[:3,:]=transform_matrices[i]
+        #     print('======pose proposal for LO=====')
+        #     print(pose_proposal)
+        #
+        #     T,distacnces,iterations=LO(pc,tgt_pc,init_pose=pose_proposal, max_iterations=50, tolerance=0.001,LO='icp')
+        #     optimized_transform_matrices.append(T)
+        #     totalIterations+=iterations
+        #     print('iterations:\n')
+        #     print(iterations)
+        # timeCostLO=time.time()-startTimeLO
+        # optimized_transform_matrices=np.asarray(optimized_transform_matrices)
+        #
+        # print('*****LO result: time_cost {:.3} s'.format(timeCostLO/(len(pointclouds)-1))+' average iterations: {}'
+        #       .format(totalIterations/(len(pointclouds)-1)))
+        # # print(optimized_transform_matrices)
+        #
+        #
+        # #TODO 打通VO-LO pipeline: 需要将转换矩阵格式对齐； 评估VO的预估对LO的增益：效率上和精度上； 评估过程可视化
+        # #TODO 利用数据集有对应的图像，点云和位姿真值的数据集（Kitti的odomerty）
+        #
+        # inv_optimized_rot_matrices = np.linalg.inv(optimized_transform_matrices[:,:3,:3])
+        # inv_optimized_tr_vectors = -inv_optimized_rot_matrices @ optimized_transform_matrices[:,:3,-1:]
+        # inv_optimized_transform_matrices = np.concatenate([inv_optimized_rot_matrices, inv_optimized_tr_vectors], axis=-1)
+        #
+        # first_inv_optimized_transform = inv_optimized_transform_matrices[0]
+        # final_optimized_poses = first_inv_optimized_transform[:,:3] @ optimized_transform_matrices[:,:3,:]
+        # final_optimized_poses[:,:,-1:] += first_inv_optimized_transform[:,-1:]
+        # # print('first')
+        # # print(first_inv_optimized_transform)
+        # print('poses')
+        # print(final_optimized_poses)
+        #
+        # if args.output_dir is not None:
+        #     predictions_array[j] = final_poses
+        #
+        # optimized_ATE, optimized_RE = compute_pose_error(sample['poses'], final_optimized_poses)
+        # optimized_errors[j] = optimized_ATE, optimized_RE
+        #
+        # print('==============\n===============\n')
 
     mean_errors = errors.mean(0)
     std_errors = errors.std(0)
@@ -190,6 +211,7 @@ def main():
 
     if args.output_dir is not None:
         np.save(output_dir/'predictions.npy', predictions_array)
+        np.savetxt(output_dir/'abs_VO_poses.txt',abs_VO_poses)
 
 
 def compute_pose_error(gt, pred):

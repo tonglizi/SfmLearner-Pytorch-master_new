@@ -81,8 +81,6 @@ def main():
         tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
 
         transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
-        print(transform_matrices)
-        print("&&&&&&&&&&&&&")
 
         first_inv_transform = inv_transform_matrices[0]
         final_poses = first_inv_transform[:,:3] @ transform_matrices

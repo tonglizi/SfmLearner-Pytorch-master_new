@@ -13,9 +13,9 @@ dim = 3  # number of dimensions of the points
 noise_sigma = .01  # standard deviation error to be added
 translation = .1  # max translation of the test set
 rotation = .1  # max rotation (radians) of the test set
-rootdir = 'C:\\Users\\93121\\Desktop\\dataset\\velodyne_pcd\\'
+rootdir = r'E:\data_odometry\dataset\sequences\09\velodyne_pcd'
 dir='C:\\Users\\93121\\Desktop\\dataset\\'
-numTests=2
+numTests=10
 
 
 def rotation_matrix(axis, theta):
@@ -26,7 +26,6 @@ def rotation_matrix(axis, theta):
     return np.array([[a * a + b * b - c * c - d * d, 2 * (b * c - a * d), 2 * (b * d + a * c)],
                      [2 * (b * c + a * d), a * a + c * c - b * b - d * d, 2 * (c * d - a * b)],
                      [2 * (b * d - a * c), 2 * (c * d + a * b), a * a + d * d - b * b - c * c]])
-
 
 def test_best_fit():
     # from prepare_data import loadPointCloud
@@ -55,6 +54,10 @@ def test_icp():
     pointClouds = loadPointCloudOpen3D(rootdir)
 
     total_time = 0
+    f=open()
+    abs_pose=np.identity(4,4)
+    abs_pose=abs_pose[:2,:]
+    print(abs_pose)
     # for j in range(len(pointclouds) - 1):
     for j in range(numTests):
         A = np.asarray(pointClouds[j].points)
@@ -92,4 +95,4 @@ def test_icp_mock():
 if __name__ == "__main__":
     #test_best_fit()
     test_icp()
-    test_icp_mock()
+    #test_icp_mock()

@@ -45,14 +45,12 @@ def VO(image1,image2,pretrained_posenet,device):
     # return T,R,t
     pass
 
-def LO(points1,points2,iterations,T=None,LO='icp'):
+def LO(points1,points2,init_pose=None, max_iterations=20, tolerance=0.001,LO='icp'):
     A = np.asarray(points1.points)
     B = np.asarray(points2.points)
-    if LO=='bset_fit':
-        T, R, t = icpImpl.best_fit_transform(A, B)
-    elif LO=='icp':
-        T,_,_=icpImpl.icp(A,B,iterations,T)
-    return T
+    if LO=='icp':
+        T,distances,iterations=icpImpl.icp(A,B, init_pose,max_iterations,tolerance)
+    return T,distances,iterations
 
 #
 # #准备数据

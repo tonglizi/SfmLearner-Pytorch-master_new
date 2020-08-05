@@ -39,7 +39,7 @@ def loadPointCloudOpen3D(rootdir):
     pointclouds=[]
     for file in files:
         if not os.path.isdir(file):
-            p=read_pcd(rootdir+"\\"+file)
+            p=read_pcd(rootdir+"/"+file)
             pointclouds.append(p)
     return pointclouds
 
