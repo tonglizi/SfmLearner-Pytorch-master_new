@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*- 
 # @Time : 2020/7/25 17:34 
 # @Author : CaiXin
-# @File : test_VO_p0se.py
+# @File : test_VO_pose.py
 
 import os
 import time
