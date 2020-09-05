@@ -6,9 +6,11 @@ open3D: intel开源的python点云库，作为python环境的主力库
 在读取数据方面，两者都能达到同样的效果
 '''
 import os
-#import pcl
-import open3d as o3d
-# import numpy as np
+# import pcl
+# import open3d as o3d
+import numpy as np
+
+
 # from pypcd import pypcd
 
 
@@ -30,23 +32,35 @@ import open3d as o3d
 #             images.append(img)
 #     return images
 
-def read_pcd(path_file):
-    pcd = o3d.io.read_point_cloud(path_file)
-    return pcd
+# def read_pcd(path_file):
+#     pcd = o3d.io.read_point_cloud(path_file)
+#     return pcd
 
-def loadPointCloudOpen3D(rootdir):
-    files=os.listdir(rootdir)
-    pointclouds=[]
+
+# def loadPointCloudOpen3D(rootdir):
+#     files = os.listdir(rootdir)
+#     pointclouds = []
+#     for file in files:
+#         if not os.path.isdir(file):
+#             p = read_pcd(rootdir + "/" + file)
+#             pointclouds.append(p)
+#     return pointclouds
+
+
+def loadPointCloud(rootdir):
+    files = os.listdir(rootdir)
+    files.sort()
+    pointclouds = []
     for file in files:
         if not os.path.isdir(file):
-            p=read_pcd(rootdir+"/"+file)
+            p = np.fromfile(rootdir + "/" + file, dtype=np.float32)
             pointclouds.append(p)
     return pointclouds
 
-#*********test code***************
+# *********test code***************
 # path=r'C:\Users\93121\Desktop\dataset\velodyne_pcd\0000000000.pcd'
 
-#test open3D read and convert to ndarray
+# test open3D read and convert to ndarray
 # p=read_pcd(path)
 # print(p)
 # import numpy as np
@@ -54,7 +68,7 @@ def loadPointCloudOpen3D(rootdir):
 # print(xyz_load)
 
 
-#test PCL read and convert to ndarray
+# test PCL read and convert to ndarray
 # p=pcl.load(path)
 # print(p)
 # import numpy as np
