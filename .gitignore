@@ -2,3 +2,11 @@
 __pycache__/
 checkpoints/
 .idea/
+*.mp4
+test/
+result/
+slam_utils/
+SfmLearner_Models/
+VOLO_pipeline.py
+main_salm_LO.py
+pose_graph_example.py

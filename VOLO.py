@@ -2,10 +2,11 @@ import time
 import numpy as np
 import torch
 from models import PoseExpNet
-from point_cloud_processing import prepare_data, icpImpl
+from point_cloud_processing import icpImpl
 
-#三张图片输入的VO
-def VOMultiImg(targetImg,ref_imgs,pretrained_posenet,seq_length,device):
+
+# 三张图片输入的VO
+def VOMultiImg(targetImg, ref_imgs, pretrained_posenet, seq_length, device):
     # #导入预训练模型
     # weights = torch.load(pretrained_posenet)
     # seq_length = int(weights['state_dict']['conv1.0.weight'].size(1)/3)
@@ -25,8 +26,8 @@ def VOMultiImg(targetImg,ref_imgs,pretrained_posenet,seq_length,device):
     pass
 
 
-#TODO 一般训练出的模型是需要三张输入图像的，中间那张是目标图像：如何改写成两张输入
-def VO(image1,image2,pretrained_posenet,device):
+# TODO 一般训练出的模型是需要三张输入图像的，中间那张是目标图像：如何改写成两张输入
+def VO(image1, image2, pretrained_posenet, device):
     # #导入预训练模型
     # weights = torch.load(pretrained_posenet)
     # seq_length = int(weights['state_dict']['conv1.0.weight'].size(1)/3)
@@ -45,12 +46,13 @@ def VO(image1,image2,pretrained_posenet,device):
     # return T,R,t
     pass
 
-def LO(points1,points2,init_pose=None, max_iterations=20, tolerance=0.001,LO='icp'):
+
+def LO(points1, points2, init_pose=None, max_iterations=20, tolerance=0.001, LO='icp'):
     A = np.asarray(points1.points)
     B = np.asarray(points2.points)
-    if LO=='icp':
-        T,distances,iterations=icpImpl.icp(A,B, init_pose,max_iterations,tolerance)
-    return T,distances,iterations
+    if LO == 'icp':
+        T, distances, iterations = icpImpl.icp(A, B, init_pose, max_iterations, tolerance)
+    return T, distances, iterations
 
 #
 # #准备数据

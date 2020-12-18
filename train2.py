@@ -12,7 +12,7 @@ import custom_transforms
 import models
 from utils import tensor2array, save_checkpoint, save_path_formatter, log_output_tensorboard
 
-from loss_functions import photometric_reconstruction_loss, explainability_loss, smooth_loss, compute_errors
+from loss_functions2 import photometric_reconstruction_loss,photometric_reconstruction_loss_for_validate, explainability_loss, smooth_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -73,7 +73,7 @@ parser.add_argument('-f', '--training-output-freq', type=int,
 best_error = -1
 n_iter = 0
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'#,4,5',指定多个进行训练时出现卡死的bug
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'#,4,5',指定多个进行训练时出现卡死的bug
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
@@ -83,7 +83,7 @@ def main():
     if args.dataset_format == 'stacked':
         from datasets.stacked_sequence_folders import SequenceFolder
     elif args.dataset_format == 'sequential':
-        from sequence_folders import SequenceFolder
+        from datasets.sequence_folders import SequenceFolder
     save_path = save_path_formatter(args, parser)
     args.save_path = 'checkpoints'/save_path
     print('=> will save everything to {}'.format(args.save_path))
@@ -148,7 +148,7 @@ def main():
     output_exp = args.mask_loss_weight > 0
     if not output_exp:
         print("=> no mask loss, PoseExpnet will only output pose")
-    pose_exp_net = models.PoseExpNet2(nb_ref_imgs=args.sequence_length - 1, output_exp=args.mask_loss_weight > 0).to(device)
+    pose_exp_net = models.PoseExpNet(nb_ref_imgs=args.sequence_length - 1, output_exp=args.mask_loss_weight > 0).to(device)
 
     if args.pretrained_exp_pose:
         print("=> using pre-trained weights for explainabilty and pose net")
@@ -271,10 +271,16 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         # compute output
         disparities = disp_net(tgt_img)
         depth = [1/disp for disp in disparities]
+
+        ref_depths=[]
+        for ref_img in ref_imgs:
+            ref_disparities=disp_net(ref_img)
+            ref_depth=[1/disp for disp in ref_disparities]
+            ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
-                                                               depth, explainability_mask, pose,
+                                                               depth,ref_depths, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask)
@@ -347,11 +353,15 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
         # compute output
         disp = disp_net(tgt_img)
         depth = 1/disp
+        ref_depths=[]
+        for ref_img in ref_imgs:
+            ref_disparities=disp_net(ref_img)
+            ref_depth=1/disp
+            ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs,
-                                                               intrinsics, depth,
-                                                               explainability_mask, pose,
+        loss_1, warped, diff = photometric_reconstruction_loss_for_validate(tgt_img, ref_imgs, intrinsics,
+                                                               depth,ref_depths, explainability_mask, pose,
                                                                args.rotation_mode, args.padding_mode)
         loss_1 = loss_1.item()
         if w2 > 0:

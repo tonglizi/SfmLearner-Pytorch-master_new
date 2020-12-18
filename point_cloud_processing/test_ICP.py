@@ -31,8 +31,8 @@ def test_best_fit():
     # from prepare_data import loadPointCloud
     # pointClouds = loadPointCloud(rootdir)
 
-    from prepare_data import loadPointCloudOpen3D
-    pointClouds = loadPointCloudOpen3D(rootdir)
+    from prepare_data import loadPointCloud
+    pointClouds = loadPointCloud(rootdir)
 
     total_time = 0
     for j in range(numTests):
@@ -50,8 +50,8 @@ def test_best_fit():
 
 
 def test_icp():
-    from prepare_data import loadPointCloudOpen3D
-    pointClouds = loadPointCloudOpen3D(rootdir)
+    from prepare_data import loadPointCloud
+    pointClouds = loadPointCloud(rootdir)
 
     total_time = 0
     f=open()

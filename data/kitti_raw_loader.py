@@ -110,7 +110,7 @@ class KittiRawLoader(object):
         self.img_height = img_height
         self.img_width = img_width
         self.cam_ids = ['02', '03']
-        self.date_list = ['2011_09_26', '2011_09_28', '2011_09_29', '2011_09_30', '2011_10_03']
+        self.date_list = ['2011_09_26']#, '2011_09_28', '2011_09_29', '2011_09_30', '2011_10_03']
         self.min_speed = min_speed
         self.get_depth = get_depth
         self.get_pose = get_pose
@@ -186,7 +186,7 @@ class KittiRawLoader(object):
             sample = {"img":self.load_image(scene_data, i)[0], "id":frame_id}
 
             if self.get_depth:
-                sample['depth'] = self.generate_depth_map(scene_data, i)
+                sample['tgt_depth'] = self.generate_depth_map(scene_data, i)
             if self.get_pose:
                 sample['pose'] = scene_data['pose'][i]
             return sample
@@ -293,7 +293,7 @@ class KittiRawLoader(object):
         depth = np.zeros((self.img_height // self.depth_size_ratio, self.img_width // self.depth_size_ratio)).astype(np.float32)
         depth[velo_pts_im[:, 1].astype(np.int), velo_pts_im[:, 0].astype(np.int)] = velo_pts_im[:, 2]
 
-        # find the duplicate points and choose the closest depth
+        # find the duplicate points and choose the closest tgt_depth
         inds = sub2ind(depth.shape, velo_pts_im[:, 1], velo_pts_im[:, 0])
         dupe_inds = [item for item, count in Counter(inds).items() if count > 1]
         for dd in dupe_inds:

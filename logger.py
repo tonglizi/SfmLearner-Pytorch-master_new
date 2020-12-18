@@ -14,6 +14,8 @@ class TermLogger(object):
         tr = 3  # train bar position
         ts = 6  # valid bar position
         h = self.t.height
+        if h is None:
+            h=0
 
         for i in range(10):
             print('')

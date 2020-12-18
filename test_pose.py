@@ -3,7 +3,7 @@ import os
 import torch
 from torch.autograd import Variable
 
-from scipy.misc import imresize
+from PIL import Image
 import numpy as np
 from path import Path
 import argparse
@@ -19,8 +19,8 @@ parser.add_argument("pretrained_posenet", type=str, help="pretrained PoseNet pat
 parser.add_argument("--img-height", default=128, type=int, help="Image height")
 parser.add_argument("--img-width", default=416, type=int, help="Image width")
 parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
-parser.add_argument("--min-depth", default=1e-3)
-parser.add_argument("--max-depth", default=80)
+parser.add_argument("--min-tgt_depth", default=1e-3)
+parser.add_argument("--max-tgt_depth", default=80)
 
 parser.add_argument("--dataset-dir", default='.', type=str, help="Dataset directory")
 parser.add_argument("--sequences", default=['09'], type=str, nargs='*', help="sequences to test")
@@ -28,7 +28,7 @@ parser.add_argument("--output-dir", default=None, type=str, help="Output directo
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
 parser.add_argument("--rotation-mode", default='euler', choices=['euler', 'quat'], type=str)
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
@@ -55,9 +55,10 @@ def main():
     for j, sample in enumerate(tqdm(framework)):
         imgs = sample['imgs']
 
-        h,w,_ = imgs[0].shape
+        h=imgs[0].height
+        w=imgs[0].width
         if (not args.no_resize) and (h != args.img_height or w != args.img_width):
-            imgs = [imresize(img, (args.img_height, args.img_width)).astype(np.float32) for img in imgs]
+            imgs = [(np.array(img.resize(( args.img_width,args.img_height)))).astype(np.float32) for img in imgs]
 
         imgs = [np.transpose(img, (2,0,1)) for img in imgs]
 
@@ -71,7 +72,6 @@ def main():
                 ref_imgs.append(img)
 
         _, poses = pose_net(tgt_img, ref_imgs)
-        print("&&&&&&&&&&&&&11")
         poses = poses.cpu()[0]
         poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
 

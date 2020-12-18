@@ -18,6 +18,22 @@ from tqdm import tqdm
 from models import PoseExpNet
 from inverse_warp import pose_vec2mat
 
+import argparse
+
+import numpy as np
+np.set_printoptions(precision=4)
+from matplotlib.animation import FFMpegWriter
+
+from tqdm import tqdm
+
+#from minisam import *
+#how to install minisam: https://minisam.readthedocs.io/install.html
+from slam_utils.ScanContextManager import *
+from slam_utils.PoseGraphManager import *
+from slam_utils.UtilsMisc import *
+import slam_utils.UtilsPointcloud as Ptutils
+import slam_utils.ICP as ICP
+
 
 parser = argparse.ArgumentParser(description='Script for PoseNet testing with corresponding groundTruth from KITTI Odometry',
                                  formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -34,7 +50,22 @@ parser.add_argument("--output-dir", default=None, type=str, help="Output directo
 parser.add_argument("--img-exts", default=['png', 'jpg', 'bmp'], nargs='*', type=str, help="images extensions to glob")
 parser.add_argument("--rotation-mode", default='euler', choices=['euler', 'quat'], type=str)
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+parser.add_argument('--num_icp_points', type=int, default=5000) # 5000 is enough for real time
+
+parser.add_argument('--num_rings', type=int, default=20) # same as the original paper
+parser.add_argument('--num_sectors', type=int, default=60) # same as the original paper
+parser.add_argument('--num_candidates', type=int, default=10) # must be int
+parser.add_argument('--try_gap_loop_detection', type=int, default=10) # same as the original paper
+
+parser.add_argument('--loop_threshold', type=float, default=0.11) # 0.11 is usually safe (for avoiding false loop closure)
+
+parser.add_argument('--data_base_dir', type=str,
+                    default='/your/path/.../data_odometry_velodyne/dataset/sequences')
+parser.add_argument('--sequence_idx', type=str, default='09')
+
+parser.add_argument('--save_gap', type=int, default=300)
+
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
@@ -65,159 +96,253 @@ def main():
 
 
     abs_VO_pose=np.identity(4)[:3,:]
-    for j, sample in enumerate(tqdm(framework)):
 
-        '''
-        VO部分
-        并计算和真值的差值
-        '''
-        imgs = sample['imgs']
+    # L和C的转换矩阵,对齐输入位姿到雷达坐标系
+    Transform_matrix_L2C = np.identity(4)
+    Transform_matrix_L2C[:3,:3]=np.array([[7.533745e-03, -9.999714e-01, -6.166020e-04 ],
+                                          [1.480249e-02, 7.280733e-04, -9.998902e-01],
+                                          [9.998621e-01, 7.523790e-03, 1.480755e-02]])
+    Transform_matrix_L2C[:3,-1:]=np.array([-4.069766e-03, -7.631618e-02, -2.717806e-01]).reshape(3,1)
 
-        h,w,_ = imgs[0].shape
-        if (not args.no_resize) and (h != args.img_height or w != args.img_width):
-            imgs = [imresize(img, (args.img_height, args.img_width)).astype(np.float32) for img in imgs]
+    Transform_matrix_C2L=np.linalg.inv(Transform_matrix_L2C)
 
-        imgs = [np.transpose(img, (2,0,1)) for img in imgs]
+#*************可视化准备***********************
+    num_frames = len(tqdm(framework))
+    # Pose Graph Manager (for back-end optimization) initialization
+    PGM = PoseGraphManager()
+    PGM.addPriorFactor()
 
-        ref_imgs = []
-        for i, img in enumerate(imgs):
-            img = torch.from_numpy(img).unsqueeze(0)
-            img = ((img/255 - 0.5)/0.5).to(device)
-            if i == len(imgs)//2:
-                tgt_img = img
-            else:
-                ref_imgs.append(img)
+    # Result saver
+    save_dir = "result/" + args.sequence_idx
+    if not os.path.exists(save_dir): os.makedirs(save_dir)
+    ResultSaver = PoseGraphResultSaver(init_pose=PGM.curr_se3,
+                                       save_gap=args.save_gap,
+                                       num_frames=num_frames,
+                                       seq_idx=args.sequence_idx,
+                                       save_dir=save_dir)
 
-        timeCostVO=0
-        startTimeVO=time.time()
-        _, poses = pose_net(tgt_img, ref_imgs)
-        timeCostVO=time.time()-startTimeVO
+    # Scan Context Manager (for loop detection) initialization
+    SCM = ScanContextManager(shape=[args.num_rings, args.num_sectors],
+                             num_candidates=args.num_candidates,
+                             threshold=args.loop_threshold)
 
-        poses = poses.cpu()[0]
-        poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
+    # for save the results as a video
+    fig_idx = 1
+    fig = plt.figure(fig_idx)
+    writer = FFMpegWriter(fps=15)
+    video_name = args.sequence_idx + "_" + str(args.num_icp_points) + ".mp4"
+    num_frames_to_skip_to_show = 5
+    num_frames_to_save = np.floor(num_frames / num_frames_to_skip_to_show)
+    with writer.saving(fig, video_name, num_frames_to_save):  # this video saving part is optional
 
-        inv_transform_matrices = pose_vec2mat(poses, rotation_mode=args.rotation_mode).numpy().astype(np.float64)
+        for j, sample in enumerate(tqdm(framework)):
 
-        rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
-        tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
+            '''
+            VO部分
+            并计算和真值的差值
+            '''
+            imgs = sample['imgs']
 
-        transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
-        print('**********DeepVO result: time_cost {:.3} s'.format(timeCostVO/(len(imgs)-1)))
-        #print(transform_matrices)
-        #将对[0 1 2]中间1的转换矩阵变成对0的位姿转换
-        first_inv_transform = inv_transform_matrices[0]
-        final_poses = first_inv_transform[:,:3] @ transform_matrices
-        final_poses[:,:,-1:] += first_inv_transform[:,-1:]
-        # print('first')
-        # print(first_inv_transform)
-        print('poses')
-        print(final_poses)
+            h,w,_ = imgs[0].shape
+            if (not args.no_resize) and (h != args.img_height or w != args.img_width):
+                imgs = [imresize(img, (args.img_height, args.img_width)).astype(np.float32) for img in imgs]
 
-        cur_VO_pose=final_poses[1]
-        abs_VO_pose[:,:3]=cur_VO_pose[:,:3]@abs_VO_pose[:,:3]
-        abs_VO_pose[:,-1:]+=cur_VO_pose[:,-1:]
+            imgs = [np.transpose(img, (2,0,1)) for img in imgs]
 
-        print('绝对位姿')
-        print(abs_VO_pose)
+            ref_imgs = []
+            for i, img in enumerate(imgs):
+                img = torch.from_numpy(img).unsqueeze(0)
+                img = ((img/255 - 0.5)/0.5).to(device)
+                if i == len(imgs)//2:
+                    tgt_img = img
+                else:
+                    ref_imgs.append(img)
+
+            timeCostVO=0
+            startTimeVO=time.time()
+            _, poses = pose_net(tgt_img, ref_imgs)
+            timeCostVO=time.time()-startTimeVO
+
+            poses = poses.cpu()[0]
+            poses = torch.cat([poses[:len(imgs)//2], torch.zeros(1,6).float(), poses[len(imgs)//2:]])
+
+            inv_transform_matrices = pose_vec2mat(poses, rotation_mode=args.rotation_mode).numpy().astype(np.float64)
+
+            rot_matrices = np.linalg.inv(inv_transform_matrices[:,:,:3])
+            tr_vectors = -rot_matrices @ inv_transform_matrices[:,:,-1:]
+
+            transform_matrices = np.concatenate([rot_matrices, tr_vectors], axis=-1)
+            print('**********DeepVO result: time_cost {:.3} s'.format(timeCostVO/(len(imgs)-1)))
+            #print(transform_matrices)
+            #将对[0 1 2]中间1的转换矩阵变成对0的位姿转换
+            first_inv_transform = inv_transform_matrices[0]
+            final_poses = first_inv_transform[:,:3] @ transform_matrices
+            final_poses[:,:,-1:] += first_inv_transform[:,-1:]
+            # print('first')
+            # print(first_inv_transform)
+            print('poses')
+            print(final_poses)
+
+            #cur_VO_pose取final poses的第2项，则是取T10,T21,T32。。。
+            cur_VO_pose=np.identity(4)
+            cur_VO_pose[:3,:]=final_poses[1]
+            #引入尺度因子对单目VO输出的位姿进行修正 TODO 尺度因子如何确定
+            scale_factor=7
+            cur_VO_pose[:3,-1:]=cur_VO_pose[:3,-1:]*scale_factor
+            print("对齐前的帧间位姿")
+            print(cur_VO_pose)
 
 
+            cur_VO_pose=Transform_matrix_C2L@cur_VO_pose@np.linalg.inv(Transform_matrix_C2L)
+            print("对齐到雷达坐标系帧间位姿")
+            print(cur_VO_pose)
+
+            PGM.curr_node_idx = j # make start with 0
+            if (PGM.curr_node_idx == 0):
+                PGM.prev_node_idx = PGM.curr_node_idx
+                continue
+            # update the current (moved) pose
+            PGM.curr_se3 = np.matmul(PGM.curr_se3, cur_VO_pose)
+
+            # add the odometry factor to the graph
+            #PGM.addOdometryFactor(cur_VO_pose)
+
+            # renewal the prev information
+            PGM.prev_node_idx = PGM.curr_node_idx
+
+            # loop detection and optimize the graph
+            if (PGM.curr_node_idx > 1 and PGM.curr_node_idx % args.try_gap_loop_detection == 0):
+                # 1/ loop detection
+                loop_idx, loop_dist, yaw_diff_deg = SCM.detectLoop()
+                if (loop_idx == None):  # NOT FOUND
+                    pass
+                # else:
+                #     print("Loop event detected: ", PGM.curr_node_idx, loop_idx, loop_dist)
+                #     # 2-1/ add the loop factor
+                #     loop_scan_down_pts = SCM.getPtcloud(loop_idx)
+                #     loop_transform, _, _ = ICP.icp(curr_scan_down_pts, loop_scan_down_pts,
+                #                                    init_pose=yawdeg2se3(yaw_diff_deg), max_iterations=20)
+                #     PGM.addLoopFactor(loop_transform, loop_idx)
+                #
+                #     # 2-2/ graph optimization
+                #     PGM.optimizePoseGraph()
+                #
+                #     # 2-2/ save optimized poses
+                #     ResultSaver.saveOptimizedPoseGraphResult(PGM.curr_node_idx, PGM.graph_optimized)
+
+            # save the ICP odometry pose result (no loop closure)
+            ResultSaver.saveUnoptimizedPoseGraphResult(PGM.curr_se3, PGM.curr_node_idx)
+            if (j % num_frames_to_skip_to_show == 0):
+                ResultSaver.vizCurrentTrajectory(fig_idx=fig_idx)
+                writer.grab_frame()
+
+
+            #绝对位姿
+            abs_VO_pose[:,:3]=cur_VO_pose[:3,:3]@abs_VO_pose[:,:3]
+            abs_VO_pose[:,-1:]+=cur_VO_pose[:3,-1:]
+
+            print('对齐到雷达坐标系的绝对位姿')
+            print(abs_VO_pose)
+
+
+
+            if args.output_dir is not None:
+                predictions_array[j] = final_poses
+                abs_VO_poses[j]=abs_VO_pose.reshape(-1,12)[0]
+
+
+            ATE, RE = compute_pose_error(sample['poses'], final_poses)
+            errors[j] = ATE, RE
+
+
+            #
+            # '''
+            # LO部分
+            # 以VO的结果作为预估，并计算和真值的差值
+            # '''
+            # pointclouds=sample['pointclouds']
+            # from VOLO import LO
+            # #pointcluds是可以直接处理的
+            # for i, pc in enumerate(pointclouds):
+            #     if i == len(pointclouds)//2:
+            #
+            #         tgt_pc =pointclouds[i]
+            #
+            # optimized_transform_matrices=[]
+            #
+            # timeCostLO=0
+            # startTimeLO=time.time()
+            # totalIterations=0
+            # for i,pc in enumerate(pointclouds):
+            #     pose_proposal=np.identity(4)
+            #     pose_proposal[:3,:]=transform_matrices[i]
+            #     print('======pose proposal for LO=====')
+            #     print(pose_proposal)
+            #
+            #     T,distacnces,iterations=LO(pc,tgt_pc,init_pose=pose_proposal, max_iterations=50, tolerance=0.001,LO='icp')
+            #     optimized_transform_matrices.append(T)
+            #     totalIterations+=iterations
+            #     print('iterations:\n')
+            #     print(iterations)
+            # timeCostLO=time.time()-startTimeLO
+            # optimized_transform_matrices=np.asarray(optimized_transform_matrices)
+            #
+            # print('*****LO result: time_cost {:.3} s'.format(timeCostLO/(len(pointclouds)-1))+' average iterations: {}'
+            #       .format(totalIterations/(len(pointclouds)-1)))
+            # # print(optimized_transform_matrices)
+            #
+            #
+            # #TODO 打通VO-LO pipeline: 需要将转换矩阵格式对齐； 评估VO的预估对LO的增益：效率上和精度上； 评估过程可视化
+            # #TODO 利用数据集有对应的图像，点云和位姿真值的数据集（Kitti的odomerty）
+            #
+            # inv_optimized_rot_matrices = np.linalg.inv(optimized_transform_matrices[:,:3,:3])
+            # inv_optimized_tr_vectors = -inv_optimized_rot_matrices @ optimized_transform_matrices[:,:3,-1:]
+            # inv_optimized_transform_matrices = np.concatenate([inv_optimized_rot_matrices, inv_optimized_tr_vectors], axis=-1)
+            #
+            # first_inv_optimized_transform = inv_optimized_transform_matrices[0]
+            # final_optimized_poses = first_inv_optimized_transform[:,:3] @ optimized_transform_matrices[:,:3,:]
+            # final_optimized_poses[:,:,-1:] += first_inv_optimized_transform[:,-1:]
+            # # print('first')
+            # # print(first_inv_optimized_transform)
+            # print('poses')
+            # print(final_optimized_poses)
+            #
+            # if args.output_dir is not None:
+            #     predictions_array[j] = final_poses
+            #
+            # optimized_ATE, optimized_RE = compute_pose_error(sample['poses'], final_optimized_poses)
+            # optimized_errors[j] = optimized_ATE, optimized_RE
+            #
+            # print('==============\n===============\n')
+
+        mean_errors = errors.mean(0)
+        std_errors = errors.std(0)
+        error_names = ['ATE','RE']
+        print('')
+        print("Results")
+        print("\t {:>10}, {:>10}".format(*error_names))
+        print("mean \t {:10.4f}, {:10.4f}".format(*mean_errors))
+        print("std \t {:10.4f}, {:10.4f}".format(*std_errors))
+
+        optimized_mean_errors = optimized_errors.mean(0)
+        optimized_std_errors = optimized_errors.std(0)
+        optimized_error_names = ['optimized_ATE','optimized_RE']
+        print('')
+        print("optimized_Results")
+        print("\t {:>10}, {:>10}".format(*optimized_error_names))
+        print("mean \t {:10.4f}, {:10.4f}".format(*optimized_mean_errors))
+        print("std \t {:10.4f}, {:10.4f}".format(*optimized_std_errors))
 
         if args.output_dir is not None:
-            predictions_array[j] = final_poses
-            abs_VO_poses[j]=abs_VO_pose.reshape(-1,12)[0]
-
-
-        ATE, RE = compute_pose_error(sample['poses'], final_poses)
-        errors[j] = ATE, RE
-
-
-        #
-        # '''
-        # LO部分
-        # 以VO的结果作为预估，并计算和真值的差值
-        # '''
-        # pointclouds=sample['pointclouds']
-        # from VOLO import LO
-        # #pointcluds是可以直接处理的
-        # for i, pc in enumerate(pointclouds):
-        #     if i == len(pointclouds)//2:
-        #
-        #         tgt_pc =pointclouds[i]
-        #
-        # optimized_transform_matrices=[]
-        #
-        # timeCostLO=0
-        # startTimeLO=time.time()
-        # totalIterations=0
-        # for i,pc in enumerate(pointclouds):
-        #     pose_proposal=np.identity(4)
-        #     pose_proposal[:3,:]=transform_matrices[i]
-        #     print('======pose proposal for LO=====')
-        #     print(pose_proposal)
-        #
-        #     T,distacnces,iterations=LO(pc,tgt_pc,init_pose=pose_proposal, max_iterations=50, tolerance=0.001,LO='icp')
-        #     optimized_transform_matrices.append(T)
-        #     totalIterations+=iterations
-        #     print('iterations:\n')
-        #     print(iterations)
-        # timeCostLO=time.time()-startTimeLO
-        # optimized_transform_matrices=np.asarray(optimized_transform_matrices)
-        #
-        # print('*****LO result: time_cost {:.3} s'.format(timeCostLO/(len(pointclouds)-1))+' average iterations: {}'
-        #       .format(totalIterations/(len(pointclouds)-1)))
-        # # print(optimized_transform_matrices)
-        #
-        #
-        # #TODO 打通VO-LO pipeline: 需要将转换矩阵格式对齐； 评估VO的预估对LO的增益：效率上和精度上； 评估过程可视化
-        # #TODO 利用数据集有对应的图像，点云和位姿真值的数据集（Kitti的odomerty）
-        #
-        # inv_optimized_rot_matrices = np.linalg.inv(optimized_transform_matrices[:,:3,:3])
-        # inv_optimized_tr_vectors = -inv_optimized_rot_matrices @ optimized_transform_matrices[:,:3,-1:]
-        # inv_optimized_transform_matrices = np.concatenate([inv_optimized_rot_matrices, inv_optimized_tr_vectors], axis=-1)
-        #
-        # first_inv_optimized_transform = inv_optimized_transform_matrices[0]
-        # final_optimized_poses = first_inv_optimized_transform[:,:3] @ optimized_transform_matrices[:,:3,:]
-        # final_optimized_poses[:,:,-1:] += first_inv_optimized_transform[:,-1:]
-        # # print('first')
-        # # print(first_inv_optimized_transform)
-        # print('poses')
-        # print(final_optimized_poses)
-        #
-        # if args.output_dir is not None:
-        #     predictions_array[j] = final_poses
-        #
-        # optimized_ATE, optimized_RE = compute_pose_error(sample['poses'], final_optimized_poses)
-        # optimized_errors[j] = optimized_ATE, optimized_RE
-        #
-        # print('==============\n===============\n')
-
-    mean_errors = errors.mean(0)
-    std_errors = errors.std(0)
-    error_names = ['ATE','RE']
-    print('')
-    print("Results")
-    print("\t {:>10}, {:>10}".format(*error_names))
-    print("mean \t {:10.4f}, {:10.4f}".format(*mean_errors))
-    print("std \t {:10.4f}, {:10.4f}".format(*std_errors))
-
-    optimized_mean_errors = optimized_errors.mean(0)
-    optimized_std_errors = optimized_errors.std(0)
-    optimized_error_names = ['optimized_ATE','optimized_RE']
-    print('')
-    print("optimized_Results")
-    print("\t {:>10}, {:>10}".format(*optimized_error_names))
-    print("mean \t {:10.4f}, {:10.4f}".format(*optimized_mean_errors))
-    print("std \t {:10.4f}, {:10.4f}".format(*optimized_std_errors))
-
-    if args.output_dir is not None:
-        np.save(output_dir/'predictions.npy', predictions_array)
-        np.savetxt(output_dir/'abs_VO_poses.txt',abs_VO_poses)
+            np.save(output_dir/'predictions.npy', predictions_array)
+            np.savetxt(output_dir/'abs_VO_poses.txt',abs_VO_poses)
 
 
 def compute_pose_error(gt, pred):
     RE = 0
     snippet_length = gt.shape[0]
     scale_factor = np.sum(gt[:,:,-1] * pred[:,:,-1])/np.sum(pred[:,:,-1] ** 2)
+    print("scale_factor: %s",scale_factor)
     ATE = np.linalg.norm((gt[:,:,-1] - scale_factor * pred[:,:,-1]).reshape(-1))
     for gt_pose, pred_pose in zip(gt, pred):
         # Residual matrix to which we compute angle's sin and cos
