@@ -72,7 +72,7 @@ parser.add_argument('-f', '--training-output-freq', type=int,
 
 best_error = -1
 n_iter = 0
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 

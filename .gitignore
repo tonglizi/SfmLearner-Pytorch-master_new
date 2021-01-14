@@ -1,3 +1,4 @@
+.nohup.out.swp
 *.py[cod]
 __pycache__/
 checkpoints/
@@ -6,3 +7,4 @@ checkpoints/
 test/
 result/
 SfmLearner_Models/
+nohup.out
