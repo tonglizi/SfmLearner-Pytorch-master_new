@@ -326,7 +326,7 @@ def main():
         print("std \t {:10.4f}, {:10.4f}".format(*optimized_std_errors))
 
         if args.output_dir is not None:
-            np.save(output_dir / 'predictions.npy', predictions_array)
+            #np.save(output_dir / 'predictions.npy', predictions_array)
             np.savetxt(output_dir / 'abs_VO_poses.txt', abs_VO_poses)
 
 
