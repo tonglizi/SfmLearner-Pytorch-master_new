@@ -1,6 +1,7 @@
 from __future__ import division
 import torch
 import torch.nn.functional as F
+import torchvision.transforms as T
 
 pixel_coords = None
 
@@ -189,7 +190,7 @@ def inverse_warp(img, depth, pose, intrinsics, rotation_mode='euler', padding_mo
     return projected_img, valid_points
 
 
-def inverse_warp2(img, tgt_depth, ref_depth, pose, intrinsics, rotation_mode='euler', padding_mode='zeros'):
+def inverse_warp_with_DepthMask(img, tgt_depth, ref_depth, pose, intrinsics, rotation_mode='euler', padding_mode='zeros'):
     """
     Inverse warp a source image to the target image plane.
 
@@ -224,6 +225,46 @@ def inverse_warp2(img, tgt_depth, ref_depth, pose, intrinsics, rotation_mode='eu
     projected_depth = F.grid_sample(ref_depth, src_pixel_coords, padding_mode=padding_mode, align_corners=True)
     tgt_depth=tgt_depth.unsqueeze(1)
     weighted_mask = 1 - (projected_depth - tgt_depth).abs() / (projected_depth + tgt_depth)
+
+    valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
+
+    return projected_img, weighted_mask, valid_points
+
+def inverse_warp_with_PhotoMask(ref_img,tgt_img, tgt_depth, pose, intrinsics, rotation_mode='euler', padding_mode='zeros'):
+    """
+    Inverse warp a source image to the target image plane.
+
+    Args:
+        ref_img: the source image (where to sample pixels) -- [B, 3, H, W]
+        depth: tgt_depth map of the target image -- [B, H, W]
+        pose: 6DoF pose parameters from target to source -- [B, 6]
+        intrinsics: camera intrinsic matrix -- [B, 3, 3]
+    Returns:
+        projected_img: Source image warped to the target image plane
+        valid_points: Boolean array indicating point validity
+    """
+    check_sizes(ref_img, 'img', 'B3HW')
+    check_sizes(tgt_depth, 'tgt_depth', 'BHW')
+    check_sizes(pose, 'pose', 'B6')
+    check_sizes(intrinsics, 'intrinsics', 'B33')
+
+    batch_size, _, img_height, img_width = ref_img.size()
+
+    cam_coords = pixel2cam(tgt_depth, intrinsics.inverse())  # [B,3,H,W]
+
+    pose_mat = pose_vec2mat(pose, rotation_mode)  # [B,3,4]
+
+    # Get projection matrix for tgt camera frame to source pixel frame
+    proj_cam_to_src_pixel = intrinsics @ pose_mat  # [B, 3, 4]
+
+    rot, tr = proj_cam_to_src_pixel[:, :, :3], proj_cam_to_src_pixel[:, :, -1:]
+    src_pixel_coords = cam2pixel(cam_coords, rot, tr)  # [B,H,W,2]
+    projected_img = F.grid_sample(ref_img, src_pixel_coords, padding_mode=padding_mode, align_corners=True)
+
+    transform=T.Grayscale(num_output_channels=1)
+    projected_img_gray=transform(projected_img)
+    tgt_img_gray=transform(tgt_img)
+    weighted_mask = 1 - (projected_img_gray - tgt_img_gray).abs() / (projected_img_gray + tgt_img_gray)
 
     valid_points = src_pixel_coords.abs().max(dim=-1)[0] <= 1
 

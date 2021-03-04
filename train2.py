@@ -12,7 +12,8 @@ import custom_transforms
 import models
 from utils import tensor2array, save_checkpoint, save_path_formatter, log_output_tensorboard
 
-from loss_functions2 import photometric_reconstruction_loss,photometric_reconstruction_loss_for_validate, explainability_loss, smooth_loss, compute_errors
+from loss_functions2 import photometric_reconstruction_loss, photometric_reconstruction_loss_for_validate, \
+    explainability_loss, smooth_loss, compute_errors
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
@@ -63,9 +64,12 @@ parser.add_argument('--log-summary', default='progress_log_summary.csv', metavar
 parser.add_argument('--log-full', default='progress_log_full.csv', metavar='PATH',
                     help='csv where to save per-gradient descent train stats')
 parser.add_argument('-p', '--photo-loss-weight', type=float, help='weight for photometric loss', metavar='W', default=1)
-parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for explainabilty mask loss', metavar='W', default=0)
-parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W', default=0.1)
-parser.add_argument('--log-output', action='store_true', help='will log dispnet outputs and warped imgs at validation step')
+parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for explainabilty mask loss', metavar='W',
+                    default=0)
+parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W',
+                    default=0.1)
+parser.add_argument('--log-output', action='store_true',
+                    help='will log dispnet outputs and warped imgs at validation step')
 parser.add_argument('-f', '--training-output-freq', type=int,
                     help='frequence for outputting dispnet outputs and warped imgs at training for all scales if 0 will not output',
                     metavar='N', default=0)
@@ -73,7 +77,7 @@ parser.add_argument('-f', '--training-output-freq', type=int,
 best_error = -1
 n_iter = 0
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'#,4,5',指定多个进行训练时出现卡死的bug
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # ,4,5',指定多个进行训练时出现卡死的bug
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
 
@@ -85,7 +89,7 @@ def main():
     elif args.dataset_format == 'sequential':
         from datasets.sequence_folders import SequenceFolder
     save_path = save_path_formatter(args, parser)
-    args.save_path = 'checkpoints'/save_path
+    args.save_path = 'checkpoints' / save_path
     print('=> will save everything to {}'.format(args.save_path))
     args.save_path.makedirs_p()
     torch.manual_seed(args.seed)
@@ -148,7 +152,8 @@ def main():
     output_exp = args.mask_loss_weight > 0
     if not output_exp:
         print("=> no mask loss, PoseExpnet will only output pose")
-    pose_exp_net = models.PoseExpNet(nb_ref_imgs=args.sequence_length - 1, output_exp=args.mask_loss_weight > 0).to(device)
+    pose_exp_net = models.PoseExpNet(nb_ref_imgs=args.sequence_length - 1, output_exp=args.mask_loss_weight > 0).to(
+        device)
 
     if args.pretrained_exp_pose:
         print("=> using pre-trained weights for explainabilty and pose net")
@@ -178,15 +183,16 @@ def main():
                                  betas=(args.momentum, args.beta),
                                  weight_decay=args.weight_decay)
 
-    with open(args.save_path/args.log_summary, 'w') as csvfile:
+    with open(args.save_path / args.log_summary, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'validation_loss'])
 
-    with open(args.save_path/args.log_full, 'w') as csvfile:
+    with open(args.save_path / args.log_full, 'w') as csvfile:
         writer = csv.writer(csvfile, delimiter='\t')
         writer.writerow(['train_loss', 'photo_loss', 'explainability_loss', 'smooth_loss'])
 
-    logger = TermLogger(n_epochs=args.epochs, train_size=min(len(train_loader), args.epoch_size), valid_size=len(val_loader))
+    logger = TermLogger(n_epochs=args.epochs, train_size=min(len(train_loader), args.epoch_size),
+                        valid_size=len(val_loader))
     logger.epoch_bar.start()
 
     if args.pretrained_disp or args.evaluate:
@@ -197,7 +203,8 @@ def main():
             errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, 0, logger, tb_writer)
         for error, name in zip(errors, error_names):
             tb_writer.add_scalar(name, error, 0)
-        error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names[2:9], errors[2:9]))
+        error_string = ', '.join(
+            '{} : {:.3f}'.format(name, error) for name, error in zip(error_names[2:9], errors[2:9]))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
     for epoch in range(args.epochs):
@@ -213,7 +220,8 @@ def main():
         if args.with_gt:
             errors, error_names = validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer)
         else:
-            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer)
+            errors, error_names = validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
+                                                      tb_writer)
         error_string = ', '.join('{} : {:.3f}'.format(name, error) for name, error in zip(error_names, errors))
         logger.valid_writer.write(' * Avg {}'.format(error_string))
 
@@ -238,7 +246,7 @@ def main():
             },
             is_best)
 
-        with open(args.save_path/args.log_summary, 'a') as csvfile:
+        with open(args.save_path / args.log_summary, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             writer.writerow([train_loss, decisive_error])
     logger.epoch_bar.finish()
@@ -270,17 +278,17 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
 
         # compute output
         disparities = disp_net(tgt_img)
-        depth = [1/disp for disp in disparities]
+        depth = [1 / disp for disp in disparities]
 
-        ref_depths=[]
+        ref_depths = []
         for ref_img in ref_imgs:
-            ref_disparities=disp_net(ref_img)
-            ref_depth=[1/disp for disp in ref_disparities]
+            ref_disparities = disp_net(ref_img)
+            ref_depth = [1 / disp for disp in ref_disparities]
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
         loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
-                                                               depth,ref_depths, explainability_mask, pose,
+                                                               depth, pose,
                                                                args.rotation_mode, args.padding_mode)
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask)
@@ -288,7 +296,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
             loss_2 = 0
         loss_3 = smooth_loss(depth)
 
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3
 
         if log_losses:
             tb_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
@@ -314,10 +322,10 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
         batch_time.update(time.time() - end)
         end = time.time()
 
-        with open(args.save_path/args.log_full, 'a') as csvfile:
+        with open(args.save_path / args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
             writer.writerow([loss.item(), loss_1.item(), loss_2.item() if w2 > 0 else 0, loss_3.item()])
-        logger.train_bar.update(i+1)
+        logger.train_bar.update(i + 1)
         if i % args.print_freq == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
         if i >= epoch_size - 1:
@@ -335,8 +343,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
     losses = AverageMeter(i=3, precision=4)
     log_outputs = sample_nb_to_log > 0
     w1, w2, w3 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight
-    poses = np.zeros(((len(val_loader)-1) * args.batch_size * (args.sequence_length-1),6))
-    disp_values = np.zeros(((len(val_loader)-1) * args.batch_size * 3))
+    poses = np.zeros(((len(val_loader) - 1) * args.batch_size * (args.sequence_length - 1), 6))
+    disp_values = np.zeros(((len(val_loader) - 1) * args.batch_size * 3))
 
     # switch to evaluate mode
     disp_net.eval()
@@ -352,16 +360,16 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
 
         # compute output
         disp = disp_net(tgt_img)
-        depth = 1/disp
-        ref_depths=[]
+        depth = 1 / disp
+        ref_depths = []
         for ref_img in ref_imgs:
-            ref_disparities=disp_net(ref_img)
-            ref_depth=1/disp
+            ref_disparities = disp_net(ref_img)
+            ref_depth = 1 / disp
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, warped, diff = photometric_reconstruction_loss_for_validate(tgt_img, ref_imgs, intrinsics,
-                                                               depth,ref_depths, explainability_mask, pose,
+        loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
+                                                               depth, pose,
                                                                args.rotation_mode, args.padding_mode)
         loss_1 = loss_1.item()
         if w2 > 0:
@@ -372,28 +380,29 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
 
         if log_outputs and i < sample_nb_to_log - 1:  # log first output of first batches
             if epoch == 0:
-                for j,ref in enumerate(ref_imgs):
+                for j, ref in enumerate(ref_imgs):
                     tb_writer.add_image('val Input {}/{}'.format(j, i), tensor2array(tgt_img[0]), 0)
                     tb_writer.add_image('val Input {}/{}'.format(j, i), tensor2array(ref[0]), 1)
 
-            log_output_tensorboard(tb_writer, 'val', i, '', epoch, 1./disp, disp, warped[0], diff[0], explainability_mask)
+            log_output_tensorboard(tb_writer, 'val', i, '', epoch, 1. / disp, disp, warped[0], diff[0],
+                                   explainability_mask)
 
-        if log_outputs and i < len(val_loader)-1:
-            step = args.batch_size*(args.sequence_length-1)
-            poses[i * step:(i+1) * step] = pose.cpu().view(-1,6).numpy()
+        if log_outputs and i < len(val_loader) - 1:
+            step = args.batch_size * (args.sequence_length - 1)
+            poses[i * step:(i + 1) * step] = pose.cpu().view(-1, 6).numpy()
             step = args.batch_size * 3
             disp_unraveled = disp.cpu().view(args.batch_size, -1)
-            disp_values[i * step:(i+1) * step] = torch.cat([disp_unraveled.min(-1)[0],
-                                                            disp_unraveled.median(-1)[0],
-                                                            disp_unraveled.max(-1)[0]]).numpy()
+            disp_values[i * step:(i + 1) * step] = torch.cat([disp_unraveled.min(-1)[0],
+                                                              disp_unraveled.median(-1)[0],
+                                                              disp_unraveled.max(-1)[0]]).numpy()
 
-        loss = w1*loss_1 + w2*loss_2 + w3*loss_3
+        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3
         losses.update([loss, loss_1, loss_2])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-        logger.valid_bar.update(i+1)
+        logger.valid_bar.update(i + 1)
         if i % args.print_freq == 0:
             logger.valid_writer.write('valid: Time {} Loss {}'.format(batch_time, losses))
     if log_outputs:
@@ -404,7 +413,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
         elif args.rotation_mode == 'quat':
             coeffs_names.extend(['qx', 'qy', 'qz'])
         for i in range(poses.shape[1]):
-            tb_writer.add_histogram('{} {}'.format(prefix, coeffs_names[i]), poses[:,i], epoch)
+            tb_writer.add_histogram('{} {}'.format(prefix, coeffs_names[i]), poses[:, i], epoch)
         tb_writer.add_histogram('disp_values', disp_values, epoch)
     logger.valid_bar.update(len(val_loader))
     return losses.avg, ['Validation Total loss', 'Validation Photo loss', 'Validation Exp loss']
@@ -429,7 +438,7 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer, sampl
 
         # compute output
         output_disp = disp_net(tgt_img)
-        output_depth = 1/output_disp[:,0]
+        output_depth = 1 / output_disp[:, 0]
 
         if log_outputs and i < sample_nb_to_log:
             if epoch == 0:
@@ -439,7 +448,7 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer, sampl
                                     tensor2array(depth_to_show, max_value=None),
                                     epoch)
                 depth_to_show[depth_to_show == 0] = 1000
-                disp_to_show = (1/depth_to_show).clamp(0,10)
+                disp_to_show = (1 / depth_to_show).clamp(0, 10)
                 tb_writer.add_image('val target Disparity Normalized/{}'.format(i),
                                     tensor2array(disp_to_show, max_value=None, colormap='magma'),
                                     epoch)
@@ -456,9 +465,10 @@ def validate_with_gt(args, val_loader, disp_net, epoch, logger, tb_writer, sampl
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
-        logger.valid_bar.update(i+1)
+        logger.valid_bar.update(i + 1)
         if i % args.print_freq == 0:
-            logger.valid_writer.write('valid: Time {} Abs Error {:.4f} ({:.4f})'.format(batch_time, errors.val[0], errors.avg[0]))
+            logger.valid_writer.write(
+                'valid: Time {} Abs Error {:.4f} ({:.4f})'.format(batch_time, errors.val[0], errors.avg[0]))
     logger.valid_bar.update(len(val_loader))
     return errors.avg, error_names
 

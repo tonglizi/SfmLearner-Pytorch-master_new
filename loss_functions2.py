@@ -2,14 +2,13 @@ from __future__ import division
 import torch
 from torch import nn
 import torch.nn.functional as F
-from inverse_warp import inverse_warp2
+from inverse_warp import inverse_warp_with_PhotoMask
 
 
 def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
-                                    tgt_depth, ref_depths, explainability_mask, pose,
+                                    tgt_depth, pose,
                                     rotation_mode='euler', padding_mode='zeros'):
-    def one_scale( index, tgt_depth, explainability_mask):
-        assert (explainability_mask is None or tgt_depth.size()[2:] == explainability_mask.size()[2:])
+    def one_scale(tgt_depth):
         assert (pose.size(1) == len(ref_imgs))
 
         reconstruction_loss = 0
@@ -26,16 +25,16 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
         for i, ref_img in enumerate(ref_imgs_scaled):
             current_pose = pose[:, i]
 
-            ref_depth=ref_depths[i][index]
             # if type(ref_depth) not in [list, tuple]:
             #     ref_depth = [ref_depth]
-            ref_img_warped, weighted_mask, valid_points = inverse_warp2(ref_img, tgt_depth[:, 0],ref_depth[:,0], current_pose,
-                                                                        intrinsics_scaled,
-                                                                        rotation_mode, padding_mode)
+            ref_img_warped, weighted_mask, valid_points = inverse_warp_with_PhotoMask(ref_img, tgt_img, tgt_depth[:, 0],
+                                                                                      current_pose,
+                                                                                      intrinsics_scaled,
+                                                                                      rotation_mode, padding_mode)
             diff = (tgt_img_scaled - ref_img_warped) * valid_points.unsqueeze(1).float()
             '''
             加入mask减少动态物体的影响
-            mask用深度一致性表示：一致性为1表示损失有效，一致性为0表示损失无效
+            mask用深度/光度一致性表示：一致性为1表示损失有效，一致性为0表示损失无效
             '''
             diff = diff * weighted_mask
             # if explainability_mask is not None:
@@ -50,76 +49,13 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
         return reconstruction_loss, warped_imgs, diff_maps
 
     warped_results, diff_results = [], []
-    if type(explainability_mask) not in [tuple, list]:
-        explainability_mask = [explainability_mask]
     if type(tgt_depth) not in [list, tuple]:
         tgt_depth = [tgt_depth]
 
     total_loss = 0
-    index=0
-    for d, mask in zip(tgt_depth, explainability_mask):
-        loss, warped, diff = one_scale(index, d, mask)
-        index=index+1
-        total_loss += loss
-        warped_results.append(warped)
-        diff_results.append(diff)
-    return total_loss, warped_results, diff_results
 
-def photometric_reconstruction_loss_for_validate(tgt_img, ref_imgs, intrinsics,
-                                    tgt_depth, ref_depths, explainability_mask, pose,
-                                    rotation_mode='euler', padding_mode='zeros'):
-    def one_scale( index, tgt_depth, explainability_mask):
-        assert (explainability_mask is None or tgt_depth.size()[2:] == explainability_mask.size()[2:])
-        assert (pose.size(1) == len(ref_imgs))
-
-        reconstruction_loss = 0
-        b, _, h, w = tgt_depth.size()
-        downscale = tgt_img.size(2) / h
-
-        tgt_img_scaled = F.interpolate(tgt_img, (h, w), mode='area')
-        ref_imgs_scaled = [F.interpolate(ref_img, (h, w), mode='area') for ref_img in ref_imgs]
-        intrinsics_scaled = torch.cat((intrinsics[:, 0:2] / downscale, intrinsics[:, 2:]), dim=1)
-
-        warped_imgs = []
-        diff_maps = []
-
-        for i, ref_img in enumerate(ref_imgs_scaled):
-            current_pose = pose[:, i]
-
-            ref_depth=ref_depths[i]
-            # if type(ref_depth) not in [list, tuple]:
-            #     ref_depth = [ref_depth]
-            ref_img_warped, weighted_mask, valid_points = inverse_warp2(ref_img, tgt_depth[:, 0],ref_depth[:,0], current_pose,
-                                                                        intrinsics_scaled,
-                                                                        rotation_mode, padding_mode)
-            diff = (tgt_img_scaled - ref_img_warped) * valid_points.unsqueeze(1).float()
-            '''
-            加入mask减少动态物体的影响
-            mask用深度一致性表示：一致性为1表示损失有效，一致性为0表示损失无效
-            '''
-            diff = diff * weighted_mask
-            # if explainability_mask is not None:
-            #     diff = diff * explainability_mask[:,i:i+1].expand_as(diff)
-
-            reconstruction_loss += diff.abs().mean()
-            assert ((reconstruction_loss == reconstruction_loss).item() == 1)
-
-            warped_imgs.append(ref_img_warped[0])
-            diff_maps.append(diff[0])
-
-        return reconstruction_loss, warped_imgs, diff_maps
-
-    warped_results, diff_results = [], []
-    if type(explainability_mask) not in [tuple, list]:
-        explainability_mask = [explainability_mask]
-    if type(tgt_depth) not in [list, tuple]:
-        tgt_depth = [tgt_depth]
-
-    total_loss = 0
-    index=0
-    for d, mask in zip(tgt_depth, explainability_mask):
-        loss, warped, diff = one_scale(index, d, mask)
-        index=index+1
+    for d in zip(tgt_depth):
+        loss, warped, diff = one_scale(d)
         total_loss += loss
         warped_results.append(warped)
         diff_results.append(diff)
