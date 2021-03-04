@@ -67,6 +67,8 @@ parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for exp
                     default=0)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W',
                     default=0.1)
+parser.add_argument('-d', '--depth-diff-loss-weight', type=float, help='weight for depth difference loss', metavar='W',
+                    default=0.1)
 parser.add_argument('--log-output', action='store_true',
                     help='will log dispnet outputs and warped imgs at validation step')
 parser.add_argument('-f', '--training-output-freq', type=int,
@@ -256,7 +258,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter(precision=4)
-    w1, w2, w3 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.depth_diff_loss_weight
 
     # switch to train mode
     disp_net.train()
@@ -286,22 +288,25 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
-                                                               depth,explainability_mask, pose,
-                                                               args.rotation_mode, args.padding_mode)
+        loss_1, loss_4, warped, diff = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
+                                                                                      depth, ref_depths,
+                                                                                      explainability_mask, pose,
+                                                                                      args.rotation_mode,
+                                                                                      args.padding_mode)
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask)
         else:
             loss_2 = 0
         loss_3 = smooth_loss(depth)
 
-        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3
+        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3 + w4 * loss_4
 
         if log_losses:
             tb_writer.add_scalar('photometric_error', loss_1.item(), n_iter)
             if w2 > 0:
                 tb_writer.add_scalar('explanability_loss', loss_2.item(), n_iter)
             tb_writer.add_scalar('disparity_smoothness_loss', loss_3.item(), n_iter)
+            tb_writer.add_scalar('dpeth_diff_loss', loss_4.item(), n_iter)
             tb_writer.add_scalar('total_loss', loss.item(), n_iter)
 
         if log_output:
@@ -323,7 +328,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
 
         with open(args.save_path / args.log_full, 'a') as csvfile:
             writer = csv.writer(csvfile, delimiter='\t')
-            writer.writerow([loss.item(), loss_1.item(), loss_2.item() if w2 > 0 else 0, loss_3.item()])
+            writer.writerow([loss.item(), loss_1.item(), loss_2.item() if w2 > 0 else 0, loss_3.item(), loss_4.item()])
         logger.train_bar.update(i + 1)
         if i % args.print_freq == 0:
             logger.train_writer.write('Train: Time {} Data {} Loss {}'.format(batch_time, data_time, losses))
@@ -341,7 +346,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
     batch_time = AverageMeter()
     losses = AverageMeter(i=3, precision=4)
     log_outputs = sample_nb_to_log > 0
-    w1, w2, w3 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight
+    w1, w2, w3, w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.depth_diff_loss_weight
     poses = np.zeros(((len(val_loader) - 1) * args.batch_size * (args.sequence_length - 1), 6))
     disp_values = np.zeros(((len(val_loader) - 1) * args.batch_size * 3))
 
@@ -367,10 +372,13 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, warped, diff = photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
-                                                               depth,explainability_mask ,pose,
-                                                               args.rotation_mode, args.padding_mode)
+        loss_1, loss_4, warped, diff = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
+                                                                                      depth, ref_depths,
+                                                                                      explainability_mask, pose,
+                                                                                      args.rotation_mode,
+                                                                                      args.padding_mode)
         loss_1 = loss_1.item()
+        loss_4 = loss_4.item()
         if w2 > 0:
             loss_2 = explainability_loss(explainability_mask).item()
         else:
@@ -395,8 +403,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
                                                               disp_unraveled.median(-1)[0],
                                                               disp_unraveled.max(-1)[0]]).numpy()
 
-        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3
-        losses.update([loss, loss_1, loss_2])
+        loss = w1 * loss_1 + w2 * loss_2 + w3 * loss_3 + w4 * loss_4
+        losses.update([loss, loss_1, loss_2, loss_4])
 
         # measure elapsed time
         batch_time.update(time.time() - end)
@@ -415,7 +423,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
             tb_writer.add_histogram('{} {}'.format(prefix, coeffs_names[i]), poses[:, i], epoch)
         tb_writer.add_histogram('disp_values', disp_values, epoch)
     logger.valid_bar.update(len(val_loader))
-    return losses.avg, ['Validation Total loss', 'Validation Photo loss', 'Validation Exp loss']
+    return losses.avg, ['Validation Total loss', 'Validation Photo loss', 'Validation Exp loss',
+                        'Validation DepthDiff loss']
 
 
 @torch.no_grad()
