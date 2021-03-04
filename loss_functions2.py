@@ -41,7 +41,7 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
             '''
             ref_img_warped_gray=(ref_img_warped[:,0,:,:]*299+ref_img_warped[:,1,:,:]*587+ref_img_warped[:,2,:,:]*114)/1000
             tgt_img_scaled_gray=(tgt_img_scaled[:,0,:,:]*299+tgt_img_scaled[:,1,:,:]*587+tgt_img_scaled[:,2,:,:]*114)/1000
-            weighted_mask = 1 - (ref_img_warped_gray - tgt_img_scaled_gray).abs() / (ref_img_warped_gray + tgt_img_scaled_gray)
+            weighted_mask = 1 - (ref_img_warped_gray - tgt_img_scaled_gray).abs() / 2# 2 is max distance, to avoid nan error
             diff = diff * weighted_mask.unsqueeze(1).float()
 
             reconstruction_loss += diff.abs().mean()
