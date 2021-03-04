@@ -50,7 +50,7 @@ def photometric_reconstruction_loss(tgt_img, ref_imgs, intrinsics,
 
     warped_results, diff_results = [], []
     if type(tgt_depth) not in [list, tuple]:
-        tgt_depth = [tgt_depth]
+        tgt_depth = list(tgt_depth)
 
     total_loss = 0
 
