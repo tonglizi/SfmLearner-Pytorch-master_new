@@ -7,8 +7,8 @@ from inverse_warp import *
 
 def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
                                                    tgt_depth, ref_depths, explainability_mask, pose,
-                                                   rotation_mode='euler', padding_mode='zeros'):
-    def one_scale(tgt_depth):
+                                                   rotation_mode='euler', padding_mode='zeros',isTrain=True):
+    def one_scale(index,tgt_depth):
         assert (pose.size(1) == len(ref_imgs))
 
         reconstruction_loss = 0
@@ -26,7 +26,10 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
         for i, ref_img in enumerate(ref_imgs_scaled):
             current_pose = pose[:, i]
 
-            ref_depth = ref_depths[i]
+            if isTrain:
+                ref_depth = ref_depths[i][index]
+            else:
+                ref_depth=ref_depths[i]
             # if type(ref_depth) not in [list, tuple]:
             #     ref_depth = [ref_depth]
             ref_img_warped, _, depth_diff, valid_points = inverse_warp_with_DepthMask(ref_img, tgt_depth[:, 0],
@@ -39,12 +42,14 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
             加入mask减少动态物体的影响
             mask用深度/光度一致性表示：一致性为1表示损失有效，一致性为0表示损失无效
             '''
-            weighted_mask = 1 - (ref_img_warped - tgt_img_scaled).abs() / (ref_img_warped + tgt_img_scaled)
-            diff = diff * weighted_mask
+            ref_img_warped_gray=(ref_img_warped[:,0,:,:]*299+ref_img_warped[:,1,:,:]*587+ref_img_warped[:,2,:,:]*114)/1000
+            tgt_img_scaled_gray=(tgt_img_scaled[:,0,:,:]*299+tgt_img_scaled[:,1,:,:]*587+tgt_img_scaled[:,2,:,:]*114)/1000
+            weighted_mask = 1 - (ref_img_warped_gray - tgt_img_scaled_gray).abs() / 2# 2 is max distance, to avoid nan error
+            diff = diff * weighted_mask.unsqueeze(1).float()
 
             reconstruction_loss += diff.abs().mean()
             depth_diff_loss += depth_diff.abs().mean()
-            assert ((reconstruction_loss == reconstruction_loss).item() == 1)
+            assert ((reconstruction_loss == reconstruction_loss).item() == 1) #void NAN error
             assert ((depth_diff_loss == depth_diff_loss).item() == 1)
 
             warped_imgs.append(ref_img_warped[0])
@@ -56,13 +61,14 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
     if type(explainability_mask) not in [tuple, list]:
         explainability_mask = [explainability_mask]
     if type(tgt_depth) not in [list, tuple]:
-        tgt_depth = list(tgt_depth)
+        tgt_depth = [tgt_depth]
 
     total_reconstrcution_loss = 0
     total_depth_diff_loss = 0
-
+    index = 0
     for d, mask in zip(tgt_depth, explainability_mask):
-        reconstruction_loss, depth_diff_loss, warped, diff = one_scale(d)
+        reconstruction_loss, depth_diff_loss, warped, diff = one_scale(index,d)
+        index = index + 1
         total_reconstrcution_loss += reconstruction_loss
         total_depth_diff_loss += depth_diff_loss
         warped_results.append(warped)

@@ -67,7 +67,7 @@ parser.add_argument('-m', '--mask-loss-weight', type=float, help='weight for exp
                     default=0)
 parser.add_argument('-s', '--smooth-loss-weight', type=float, help='weight for disparity smoothness loss', metavar='W',
                     default=0.1)
-parser.add_argument('-d', '--dpeth-diff-loss-weight', type=float, help='weight for depth difference loss', metavar='W',
+parser.add_argument('-d', '--depth-diff-loss-weight', type=float, help='weight for depth difference loss', metavar='W',
                     default=0.1)
 parser.add_argument('--log-output', action='store_true',
                     help='will log dispnet outputs and warped imgs at validation step')
@@ -344,7 +344,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
 def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger, tb_writer, sample_nb_to_log=3):
     global device
     batch_time = AverageMeter()
-    losses = AverageMeter(i=3, precision=4)
+    losses = AverageMeter(i=4, precision=4)
     log_outputs = sample_nb_to_log > 0
     w1, w2, w3, w4 = args.photo_loss_weight, args.mask_loss_weight, args.smooth_loss_weight, args.depth_diff_loss_weight
     poses = np.zeros(((len(val_loader) - 1) * args.batch_size * (args.sequence_length - 1), 6))
@@ -368,7 +368,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
         ref_depths = []
         for ref_img in ref_imgs:
             ref_disparities = disp_net(ref_img)
-            ref_depth = 1 / disp
+            ref_depth = 1 / ref_disparities
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
@@ -376,7 +376,8 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
                                                                                       depth, ref_depths,
                                                                                       explainability_mask, pose,
                                                                                       args.rotation_mode,
-                                                                                      args.padding_mode)
+                                                                                      args.padding_mode,
+                                                                                      False)
         loss_1 = loss_1.item()
         loss_4 = loss_4.item()
         if w2 > 0:
