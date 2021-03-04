@@ -12,8 +12,7 @@ import custom_transforms
 import models
 from utils import tensor2array, save_checkpoint, save_path_formatter, log_output_tensorboard
 
-from loss_functions2 import photometric_reconstruction_loss, photometric_reconstruction_loss_for_validate, \
-    explainability_loss, smooth_loss, compute_errors
+from loss_functions2 import *
 from logger import TermLogger, AverageMeter
 from tensorboardX import SummaryWriter
 
