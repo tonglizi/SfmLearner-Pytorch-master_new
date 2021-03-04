@@ -7,7 +7,7 @@ from inverse_warp import *
 
 def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
                                                    tgt_depth, ref_depths, explainability_mask, pose,
-                                                   rotation_mode='euler', padding_mode='zeros'):
+                                                   rotation_mode='euler', padding_mode='zeros',isTrain=True):
     def one_scale(index,tgt_depth):
         assert (pose.size(1) == len(ref_imgs))
 
@@ -26,7 +26,10 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
         for i, ref_img in enumerate(ref_imgs_scaled):
             current_pose = pose[:, i]
 
-            ref_depth = ref_depths[i][index]
+            if isTrain:
+                ref_depth = ref_depths[i][index]
+            else:
+                ref_depth=ref_depths[i]
             # if type(ref_depth) not in [list, tuple]:
             #     ref_depth = [ref_depth]
             ref_img_warped, _, depth_diff, valid_points = inverse_warp_with_DepthMask(ref_img, tgt_depth[:, 0],
@@ -58,7 +61,7 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
     if type(explainability_mask) not in [tuple, list]:
         explainability_mask = [explainability_mask]
     if type(tgt_depth) not in [list, tuple]:
-        tgt_depth = list(tgt_depth)
+        tgt_depth = [tgt_depth]
 
     total_reconstrcution_loss = 0
     total_depth_diff_loss = 0
