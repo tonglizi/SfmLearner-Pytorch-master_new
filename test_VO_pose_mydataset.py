@@ -15,12 +15,14 @@ from path import Path
 import argparse
 from tqdm import tqdm
 
-from models import PoseExpNet
+from models import PoseExpNet,DispNetS
 from inverse_warp import pose_vec2mat
 
 import argparse
 
 import numpy as np
+
+from utils import tensor2array
 
 np.set_printoptions(precision=4)
 from matplotlib.animation import FFMpegWriter
@@ -34,11 +36,13 @@ from slam_utils.PoseGraphManager import *
 from slam_utils.UtilsMisc import *
 import slam_utils.UtilsPointcloud as Ptutils
 import slam_utils.ICP as ICP
+import custom_transforms
 
 parser = argparse.ArgumentParser(
     description='Script for PoseNet testing with corresponding groundTruth from KITTI Odometry',
     formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 parser.add_argument("pretrained_posenet", type=str, help="pretrained PoseNet path")
+parser.add_argument("--pretrained-dispnet", required=True, type=str, help="pretrained DispNet path")
 parser.add_argument("--img-height", default=341, type=int, help="Image height")
 parser.add_argument("--img-width", default=427, type=int, help="Image width")
 parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
@@ -80,6 +84,34 @@ def main():
     seq_length = int(weights['state_dict']['conv1.0.weight'].size(1) / 3)
     pose_net = PoseExpNet(nb_ref_imgs=seq_length - 1, output_exp=False).to(device)
     pose_net.load_state_dict(weights['state_dict'], strict=False)
+
+    # *************************可删除*********************************
+    # 为了进行Mask评估，这里需要引入disp net
+    disp_net = DispNetS().to(device)
+    weights = torch.load(args.pretrained_dispnet)
+    disp_net.load_state_dict(weights['state_dict'])
+    disp_net.eval()
+
+    # normalize = custom_transforms.Normalize(mean=[0.5, 0.5, 0.5],
+    #                                         std=[0.5, 0.5, 0.5])
+    # valid_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    # from datasets.sequence_folders import SequenceFolder
+    # val_set = SequenceFolder(
+    #     '/home/sda/mydataset/preprocessing/formatted/data/',
+    #     transform=valid_transform,
+    #     seed=0,
+    #     train=False,
+    #     sequence_length=3,
+    # )
+    # val_loader = torch.utils.data.DataLoader(
+    #     val_set, batch_size=1, shuffle=False,
+    #     num_workers=4, pin_memory=True)
+    #
+    # intrinsics = None
+    # for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv) in enumerate(val_loader):
+    #     intrinsics = intrinsics.to(device)
+    #     break
+    # *************************************************************************
 
     dataset_dir = Path(args.dataset_dir)
     framework = test_framework(dataset_dir, args.sequences, seq_length)
@@ -161,6 +193,42 @@ def main():
             _, poses = pose_net(tgt_img, ref_imgs)
             timeCostVO = time.time() - startTimeVO
 
+            # **************************可删除********************************
+            '''测试Photo mask的效果'''
+            intrinsics=[[279.1911,   0.0000, 210.8265],
+         [  0.0000, 279.3980, 172.3114],
+         [  0.0000,   0.0000,   1.0000]]
+            intrinsics=torch.tensor(intrinsics).unsqueeze(0)
+            intrinsics = intrinsics.to(device)
+
+            print('intrinsics')
+            print(intrinsics)
+            disp = disp_net(tgt_img)
+            depth = 1 / disp
+
+            ref_depths = []
+            for ref_img in ref_imgs:
+                ref_disparities = disp_net(ref_img)
+                ref_depth = 1 / ref_disparities
+                ref_depths.append(ref_depth)
+
+            from loss_functions2 import photometric_reconstruction_and_depth_diff_loss
+            reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
+                                                                                          depth, ref_depths,
+                                                                                          _, poses,
+                                                                                          'euler',
+                                                                                          'zeros',
+                                                                                        isTrain=False)
+            print('warped imgs')
+            print(warped_imgs)
+            images=[]
+            for i in range(len(warped_imgs)):
+                images.append(tensor2array(warped_imgs[0][i]))
+            # from PIL import Image
+            # img = Image.fromarray(images[0], 'RGB')
+            # img.show()
+
+            # ***************************************************************
             poses = poses.cpu()[0]
             poses = torch.cat([poses[:len(imgs) // 2], torch.zeros(1, 6).float(), poses[len(imgs) // 2:]])
 
