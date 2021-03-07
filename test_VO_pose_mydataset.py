@@ -7,6 +7,7 @@ import os
 import time
 
 import torch
+from PIL import Image
 from torch.autograd import Variable
 
 from scipy.misc import imresize
@@ -68,6 +69,7 @@ parser.add_argument('--loop_threshold', type=float,
 
 
 parser.add_argument('--save_gap', type=int, default=300)
+parser.add_argument('--isDynamic', type=bool, default=False,help="Only for dynamic scene to test photo mask")
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -194,40 +196,60 @@ def main():
             timeCostVO = time.time() - startTimeVO
 
             # **************************可删除********************************
-            '''测试Photo mask的效果'''
-            intrinsics=[[279.1911,   0.0000, 210.8265],
-         [  0.0000, 279.3980, 172.3114],
-         [  0.0000,   0.0000,   1.0000]]
-            intrinsics=torch.tensor(intrinsics).unsqueeze(0)
-            intrinsics = intrinsics.to(device)
+            if args.isDynamic:
+                '''测试Photo mask的效果'''
+                intrinsics = [[279.1911, 0.0000, 210.8265],
+                              [0.0000, 279.3980, 172.3114],
+                              [0.0000, 0.0000, 1.0000]]
+                intrinsics = torch.tensor(intrinsics).unsqueeze(0)
+                intrinsics = intrinsics.to(device)
 
-            print('intrinsics')
-            print(intrinsics)
-            disp = disp_net(tgt_img)
-            depth = 1 / disp
+                print('intrinsics')
+                print(intrinsics)
+                disp = disp_net(tgt_img)
+                depth = 1 / disp
 
-            ref_depths = []
-            for ref_img in ref_imgs:
-                ref_disparities = disp_net(ref_img)
-                ref_depth = 1 / ref_disparities
-                ref_depths.append(ref_depth)
+                ref_depths = []
+                for ref_img in ref_imgs:
+                    ref_disparities = disp_net(ref_img)
+                    ref_depth = 1 / ref_disparities
+                    ref_depths.append(ref_depth)
 
-            from loss_functions2 import photometric_reconstruction_and_depth_diff_loss
-            reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
-                                                                                          depth, ref_depths,
-                                                                                          _, poses,
-                                                                                          'euler',
-                                                                                          'zeros',
-                                                                                        isTrain=False)
-            print('warped imgs')
-            print(warped_imgs)
-            images=[]
-            for i in range(len(warped_imgs)):
-                images.append(tensor2array(warped_imgs[0][i]))
-            # from PIL import Image
-            # img = Image.fromarray(images[0], 'RGB')
-            # img.show()
+                from loss_functions2 import photometric_reconstruction_and_depth_diff_loss
+                reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps, weighted_masks = photometric_reconstruction_and_depth_diff_loss(
+                    tgt_img, ref_imgs, intrinsics,
+                    depth, ref_depths,
+                    _, poses,
+                    'euler',
+                    'zeros',
+                    isTrain=False)
 
+                im_path = args.output_dir + '/result/' + args.sequences[0] + '/seq_{}/'.format(j)
+                if not os.path.exists(im_path):
+                    os.makedirs(im_path)
+                # save tgt_img
+                tgt_img = tensor2array(tgt_img[0]) * 255
+                tgt_img = tgt_img.transpose(1, 2, 0)
+                img = Image.fromarray(np.uint8(tgt_img)).convert('RGB')
+                # img.show()
+                if args.output_dir is not None:
+                    img.save(im_path + 'tgt.jpg')
+
+                for i in range(len(warped_imgs[0])):
+                    warped_img = tensor2array(warped_imgs[0][i]) * 255
+                    warped_img = warped_img.transpose(1, 2, 0)
+                    img = Image.fromarray(np.uint8(warped_img)).convert('RGB')
+                    # img.show()
+                    if args.output_dir is not None:
+                        img.save(im_path+'src_{}.jpg'.format(i))
+
+                for i in range(len(weighted_masks[0])):
+                    weighted_mask = weighted_masks[0][i].cpu().clone().numpy() * 255
+                    img = Image.fromarray(weighted_mask)
+                    img=img.convert('L')
+                    # img.show()
+                    if args.output_dir is not None:
+                        img.save(im_path+'photomask_{}.jpg'.format(i))
             # ***************************************************************
             poses = poses.cpu()[0]
             poses = torch.cat([poses[:len(imgs) // 2], torch.zeros(1, 6).float(), poses[len(imgs) // 2:]])

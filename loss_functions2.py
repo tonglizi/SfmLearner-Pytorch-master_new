@@ -4,6 +4,8 @@ from torch import nn
 import torch.nn.functional as F
 from inverse_warp import *
 
+import numpy as np
+
 
 def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
                                                    tgt_depth, ref_depths, explainability_mask, pose,
@@ -20,6 +22,7 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
         ref_imgs_scaled = [F.interpolate(ref_img, (h, w), mode='area') for ref_img in ref_imgs]
         intrinsics_scaled = torch.cat((intrinsics[:, 0:2] / downscale, intrinsics[:, 2:]), dim=1)
 
+        weighted_masks=[]
         warped_imgs = []
         diff_maps = []
 
@@ -54,10 +57,11 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
 
             warped_imgs.append(ref_img_warped[0])
             diff_maps.append(diff[0])
+            weighted_masks.append(weighted_mask[0])
 
-        return reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps
+        return reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps,weighted_masks
 
-    warped_results, diff_results = [], []
+    warped_results, diff_results,weighted_results = [], [],[]
     if type(explainability_mask) not in [tuple, list]:
         explainability_mask = [explainability_mask]
     if type(tgt_depth) not in [list, tuple]:
@@ -67,13 +71,14 @@ def photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics
     total_depth_diff_loss = 0
     index = 0
     for d, mask in zip(tgt_depth, explainability_mask):
-        reconstruction_loss, depth_diff_loss, warped, diff = one_scale(index,d)
+        reconstruction_loss, depth_diff_loss, warped, diff,weighted = one_scale(index,d)
         index = index + 1
         total_reconstrcution_loss += reconstruction_loss
         total_depth_diff_loss += depth_diff_loss
         warped_results.append(warped)
         diff_results.append(diff)
-    return total_reconstrcution_loss, total_depth_diff_loss, warped_results, diff_results
+        weighted_results.append(weighted)
+    return total_reconstrcution_loss, total_depth_diff_loss, warped_results, diff_results,weighted_results
 
 
 def explainability_loss(mask):

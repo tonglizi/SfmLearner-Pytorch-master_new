@@ -288,7 +288,7 @@ def train(args, train_loader, disp_net, pose_exp_net, optimizer, epoch_size, log
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, loss_4, warped, diff = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
+        loss_1, loss_4, warped, diff,_ = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
                                                                                       depth, ref_depths,
                                                                                       explainability_mask, pose,
                                                                                       args.rotation_mode,
@@ -372,7 +372,7 @@ def validate_without_gt(args, val_loader, disp_net, pose_exp_net, epoch, logger,
             ref_depths.append(ref_depth)
         explainability_mask, pose = pose_exp_net(tgt_img, ref_imgs)
 
-        loss_1, loss_4, warped, diff = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
+        loss_1, loss_4, warped, diff,_ = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
                                                                                       depth, ref_depths,
                                                                                       explainability_mask, pose,
                                                                                       args.rotation_mode,
