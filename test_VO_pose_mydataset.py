@@ -7,6 +7,7 @@ import os
 import time
 
 import torch
+from PIL import Image
 from torch.autograd import Variable
 
 from scipy.misc import imresize
@@ -22,6 +23,8 @@ import argparse
 
 import numpy as np
 
+from utils import tensor2array
+
 np.set_printoptions(precision=4)
 from matplotlib.animation import FFMpegWriter
 
@@ -34,6 +37,7 @@ from slam_utils.PoseGraphManager import *
 from slam_utils.UtilsMisc import *
 import slam_utils.UtilsPointcloud as Ptutils
 import slam_utils.ICP as ICP
+import custom_transforms
 
 parser = argparse.ArgumentParser(
     description='Script for PoseNet testing with corresponding groundTruth from KITTI Odometry',
@@ -65,6 +69,7 @@ parser.add_argument('--loop_threshold', type=float,
 
 
 parser.add_argument('--save_gap', type=int, default=300)
+parser.add_argument('--isDynamic', type=bool, default=False,help="Only for dynamic scene to test photo mask")
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -82,11 +87,33 @@ def main():
     pose_net = PoseExpNet(nb_ref_imgs=seq_length - 1, output_exp=False).to(device)
     pose_net.load_state_dict(weights['state_dict'], strict=False)
 
+    # *************************可删除*********************************
     # 为了进行Mask评估，这里需要引入disp net
     disp_net = DispNetS().to(device)
     weights = torch.load(args.pretrained_dispnet)
     disp_net.load_state_dict(weights['state_dict'])
     disp_net.eval()
+
+    # normalize = custom_transforms.Normalize(mean=[0.5, 0.5, 0.5],
+    #                                         std=[0.5, 0.5, 0.5])
+    # valid_transform = custom_transforms.Compose([custom_transforms.ArrayToTensor(), normalize])
+    # from datasets.sequence_folders import SequenceFolder
+    # val_set = SequenceFolder(
+    #     '/home/sda/mydataset/preprocessing/formatted/data/',
+    #     transform=valid_transform,
+    #     seed=0,
+    #     train=False,
+    #     sequence_length=3,
+    # )
+    # val_loader = torch.utils.data.DataLoader(
+    #     val_set, batch_size=1, shuffle=False,
+    #     num_workers=4, pin_memory=True)
+    #
+    # intrinsics = None
+    # for i, (tgt_img, ref_imgs, intrinsics, intrinsics_inv) in enumerate(val_loader):
+    #     intrinsics = intrinsics.to(device)
+    #     break
+    # *************************************************************************
 
     dataset_dir = Path(args.dataset_dir)
     framework = test_framework(dataset_dir, args.sequences, seq_length)
@@ -169,25 +196,60 @@ def main():
             timeCostVO = time.time() - startTimeVO
 
             # **************************可删除********************************
-            '''测试Photo mask的效果'''
-            intrinsics=None
-            disparities = disp_net(tgt_img)
-            depth = [1 / disp for disp in disparities]
+            if args.isDynamic:
+                '''测试Photo mask的效果'''
+                intrinsics = [[279.1911, 0.0000, 210.8265],
+                              [0.0000, 279.3980, 172.3114],
+                              [0.0000, 0.0000, 1.0000]]
+                intrinsics = torch.tensor(intrinsics).unsqueeze(0)
+                intrinsics = intrinsics.to(device)
 
-            ref_depths = []
-            for ref_img in ref_imgs:
-                ref_disparities = disp_net(ref_img)
-                ref_depth = [1 / disp for disp in ref_disparities]
-                ref_depths.append(ref_depth)
+                print('intrinsics')
+                print(intrinsics)
+                disp = disp_net(tgt_img)
+                depth = 1 / disp
 
-            from loss_functions2 import photometric_reconstruction_and_depth_diff_loss
-            reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps = photometric_reconstruction_and_depth_diff_loss(tgt_img, ref_imgs, intrinsics,
-                                                                                          depth, ref_depths,
-                                                                                          _, poses,
-                                                                                          'euler',
-                                                                                          'zeros')
-            print('warped imgs')
-            print(type(warped_imgs))
+                ref_depths = []
+                for ref_img in ref_imgs:
+                    ref_disparities = disp_net(ref_img)
+                    ref_depth = 1 / ref_disparities
+                    ref_depths.append(ref_depth)
+
+                from loss_functions2 import photometric_reconstruction_and_depth_diff_loss
+                reconstruction_loss, depth_diff_loss, warped_imgs, diff_maps, weighted_masks = photometric_reconstruction_and_depth_diff_loss(
+                    tgt_img, ref_imgs, intrinsics,
+                    depth, ref_depths,
+                    _, poses,
+                    'euler',
+                    'zeros',
+                    isTrain=False)
+
+                im_path = args.output_dir + '/result/' + args.sequences[0] + '/seq_{}/'.format(j)
+                if not os.path.exists(im_path):
+                    os.makedirs(im_path)
+                # save tgt_img
+                tgt_img = tensor2array(tgt_img[0]) * 255
+                tgt_img = tgt_img.transpose(1, 2, 0)
+                img = Image.fromarray(np.uint8(tgt_img)).convert('RGB')
+                # img.show()
+                if args.output_dir is not None:
+                    img.save(im_path + 'tgt.jpg')
+
+                for i in range(len(warped_imgs[0])):
+                    warped_img = tensor2array(warped_imgs[0][i]) * 255
+                    warped_img = warped_img.transpose(1, 2, 0)
+                    img = Image.fromarray(np.uint8(warped_img)).convert('RGB')
+                    # img.show()
+                    if args.output_dir is not None:
+                        img.save(im_path+'src_{}.jpg'.format(i))
+
+                for i in range(len(weighted_masks[0])):
+                    weighted_mask = weighted_masks[0][i].cpu().clone().numpy() * 255
+                    img = Image.fromarray(weighted_mask)
+                    img=img.convert('L')
+                    # img.show()
+                    if args.output_dir is not None:
+                        img.save(im_path+'photomask_{}.jpg'.format(i))
             # ***************************************************************
             poses = poses.cpu()[0]
             poses = torch.cat([poses[:len(imgs) // 2], torch.zeros(1, 6).float(), poses[len(imgs) // 2:]])
