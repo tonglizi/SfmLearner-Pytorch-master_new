@@ -28,6 +28,7 @@ class test_framework_MYDATASET(object):
         return self.generator()
 
     def __len__(self):
+        '''返回所有图像文件的总数'''
         return sum(len(imgs) for imgs in self.img_files)
 
 
