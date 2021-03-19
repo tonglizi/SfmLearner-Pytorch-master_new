@@ -1,5 +1,5 @@
 import torch
-
+from scipy.misc import imresize
 from imageio import imread, imsave
 from PIL import Image
 import numpy as np
@@ -59,7 +59,7 @@ def main():
 
         h,w,_ = img.shape
         if (not args.no_resize) and (h != args.img_height or w != args.img_width):
-            img = np.array(Image.fromarray(img).imresize((args.img_height, args.img_width)))
+            img = imresize(img, (args.img_height, args.img_width)).astype(np.float32)
         img = np.transpose(img, (2, 0, 1))
 
         tensor_img = torch.from_numpy(img.astype(np.float32)).unsqueeze(0)
