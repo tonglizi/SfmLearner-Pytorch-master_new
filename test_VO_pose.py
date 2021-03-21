@@ -211,9 +211,9 @@ def main():
             PGM.prev_node_idx = PGM.curr_node_idx
             ResultSaver.saveUnoptimizedPoseGraphResult(PGM.curr_se3, PGM.curr_node_idx)
 
-            if (j % num_frames_to_skip_to_show == 0):
-                ResultSaver.vizCurrentTrajectory(fig_idx=fig_idx)
-                writer.grab_frame()
+            # if (j % num_frames_to_skip_to_show == 0):
+            #     ResultSaver.vizCurrentTrajectory(fig_idx=fig_idx)
+            #     writer.grab_frame()
 
             if args.isKitti:
                 ATE, RE = compute_pose_error(sample['poses'], final_poses)

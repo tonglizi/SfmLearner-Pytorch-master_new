@@ -1,5 +1,5 @@
 import torch
-
+from scipy.misc import imresize
 from imageio import imread, imsave
 from PIL import Image
 import numpy as np
@@ -59,7 +59,7 @@ def main():
 
         h,w,_ = img.shape
         if (not args.no_resize) and (h != args.img_height or w != args.img_width):
-            img = np.array(Image.fromarray(img).imresize((args.img_height, args.img_width)))
+            img = imresize(img, (args.img_height, args.img_width)).astype(np.float32)
         img = np.transpose(img, (2, 0, 1))
 
         tensor_img = torch.from_numpy(img.astype(np.float32)).unsqueeze(0)
@@ -78,7 +78,7 @@ def main():
             imsave(output_dir/'{}_disp{}'.format(file_name, file_ext), np.transpose(disp, (1,2,0)))
         if args.output_depth:
             depth = 1/output
-            depth = (255*tensor2array(depth, max_value=10, colormap='rainbow')).astype(np.uint8)
+            depth = (255*tensor2array(depth, max_value=10, colormap='bone')).astype(np.uint8)
             imsave(output_dir/'{}_depth{}'.format(file_name, file_ext), np.transpose(depth, (1,2,0)))
 
 
