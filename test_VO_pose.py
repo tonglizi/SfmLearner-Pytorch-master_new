@@ -38,8 +38,6 @@ parser.add_argument("--pretrained-dispnet", type=str, help="pretrained DispNet p
 parser.add_argument("--img-height", default=341, type=int, help="Image height")
 parser.add_argument("--img-width", default=427, type=int, help="Image width")
 parser.add_argument("--no-resize", action='store_true', help="no resizing is done")
-parser.add_argument("--min-depth", default=1e-3)
-parser.add_argument("--max-depth", default=80)
 parser.add_argument("--dataset-dir", default='.', type=str, help="Dataset directory")
 parser.add_argument("--sequences", default='09', type=str, nargs='*', help="sequences to test")
 parser.add_argument("--output-dir", default='./result/', type=str,
@@ -51,6 +49,8 @@ parser.add_argument('--save_gap', type=int, default=300)
 parser.add_argument('--isDynamic', type=bool, default=False, help="Only for dynamic scene to test photo mask")
 parser.add_argument('--isKitti', type=bool, default=False,
                     help="Only for KITTI dataset test, if not, then for mydataset")
+parser.add_argument('--trainedOnMydataset', type=bool, default=True,
+                    help="image downsample size should be consistent with image size trained on the dataset")
 
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -60,6 +60,7 @@ def MD5_ID(pretrained_posenet):
     md = hashlib.md5()  # 创建md5对象
     md.update(str(pretrained_posenet).encode(encoding='utf-8'))
     return md.hexdigest()
+
 
 @torch.no_grad()
 def main():
@@ -78,8 +79,14 @@ def main():
     if args.isKitti:
         from kitti_eval.pose_evaluation_utils import test_framework_KITTI as test_framework
         save_dir = os.path.join(args.output_dir, "kitti", args.sequences[0], 'net_' + net_ID)
-        downsample_img_height=128
-        downsample_img_width=416
+        if args.trainedOnMydataset:
+            downsample_img_height = args.img_height
+            downsample_img_width = args.img_width
+        else:
+            # on kitti train set
+            downsample_img_height = 128
+            downsample_img_width = 416
+
         Transform_matrix_L2C[:3, :3] = np.array([[7.533745e-03, -9.999714e-01, -6.166020e-04],
                                                  [1.480249e-02, 7.280733e-04, -9.998902e-01],
                                                  [9.998621e-01, 7.523790e-03, 1.480755e-02]])
@@ -87,8 +94,13 @@ def main():
     else:
         from mydataset_eval.pose_evaluation_utils import test_framework_MyData as test_framework
         save_dir = os.path.join(args.output_dir, "mydataset", args.sequences[0], 'net_' + net_ID)
-        downsample_img_height=args.img_height
-        downsample_img_width=args.img_width
+        if args.trainedOnMydataset:
+            downsample_img_height = args.img_height
+            downsample_img_width = args.img_width
+        else:
+            # on kitti train set
+            downsample_img_height = 128
+            downsample_img_width = 416
         Transform_matrix_L2C[:3, :3] = np.array([[-1.51482698e-02, -9.99886648e-01, 5.36310553e-03],
                                                  [-4.65337018e-03, -5.36307196e-03, -9.99969412e-01],
                                                  [9.99870070e-01, -1.56647995e-02, -4.48880010e-03]])
