@@ -77,7 +77,7 @@ def main():
     Transform_matrix_L2C = np.identity(4)
     '''Kitti switch'''
     if args.isKitti:
-        if args.isDynamic:
+        if not args.isDynamic:
             from kitti_eval.pose_evaluation_utils import test_framework_KITTI as test_framework
         else:
             from kitti_eval.pose_evaluation_utils_forDynamicTest import test_framework_KITTI as test_framework
