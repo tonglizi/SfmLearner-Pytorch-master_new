@@ -92,7 +92,7 @@ def main():
                                                  [9.998621e-01, 7.523790e-03, 1.480755e-02]])
         Transform_matrix_L2C[:3, -1:] = np.array([-4.069766e-03, -7.631618e-02, -2.717806e-01]).reshape(3, 1)
     else:
-        from mydataset_eval.pose_evaluation_utils import test_framework_MyData as test_framework
+        from mydataset_eval.pose_evaluation_utils import test_framework_MYDATASET as test_framework
         save_dir = os.path.join(args.output_dir, "mydataset", args.sequences[0], 'net_' + net_ID)
         if args.trainedOnMydataset:
             downsample_img_height = args.img_height
