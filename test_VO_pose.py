@@ -14,7 +14,6 @@ import hashlib
 import os
 import torch
 from PIL import Image
-from scipy.misc import imresize
 from path import Path
 from models import PoseExpNet
 from inverse_warp import pose_vec2mat
@@ -178,7 +177,8 @@ def main():
             imgs = sample['imgs']
             w, h = imgs[0].size
             if (not args.no_resize) and (h != downsample_img_height or w != downsample_img_width):
-                imgs = [imresize(img, (downsample_img_height, downsample_img_width)).astype(np.float32) for img in imgs]
+                imgs = [(np.array(img.resize((downsample_img_width, downsample_img_height)))).astype(np.float32) for img
+                        in imgs]
             imgs = [np.transpose(img, (2, 0, 1)) for img in imgs]
 
             ref_imgs = []
