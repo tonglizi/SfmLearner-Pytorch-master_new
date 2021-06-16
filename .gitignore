@@ -9,3 +9,4 @@ result/
 SfmLearner_Models/
 nohup.out
 *.txt
+output/

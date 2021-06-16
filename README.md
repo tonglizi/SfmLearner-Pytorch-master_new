@@ -1,3 +1,10 @@
+# DS-SFMLearner更新
+DS-SfmLearner的更新版本主要是利用光度一致性掩码对原始视觉合成函数进行掩码处理，抛弃了原始论文采用解释性预测网络进行动态目标识别的方法。  
+![sample_results](misc/ds1.png)  
+![sample_results](misc/ds2.png)  
+![sample_results](misc/ds3.png)  
+* 区别: 相比原始版本，主要增加了loss_function2.py和train2.py脚本作为DS-SfmLearner的实现；同时增加了对自建数据集的读取和测试支持
+* 相同点: 数据准备，网络训练等要求不变
 # SfMLearner Pytorch version
 This codebase implements the system described in the paper:
 
